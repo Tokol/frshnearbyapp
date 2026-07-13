@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "341161446747",
+    "project_id": "freshnearby-17349",
+    "storage_bucket": "freshnearby-17349.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:341161446747:android:f296fd6934d9f9d6d69e7e",
+        "android_client_info": {
+          "package_name": "com.frshnearby.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA98AuBs6eU9q9TE8sxX1vCh9gvhKnA1gg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

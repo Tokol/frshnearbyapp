@@ -111,7 +111,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get authDemoMessage => 'Looks good! Authentication will be connected next.';
 
   @override
-  String get authSimpleTitle => 'Fresh food starts here';
+  String get authSimpleTitle => 'Fresh food near you';
 
   @override
   String get authSimpleSubtitle => 'Sign in or create your account in a few taps.';

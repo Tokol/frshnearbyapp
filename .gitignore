@@ -34,6 +34,13 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# Authentication/admin secrets. Firebase client configuration files are not
+# admin secrets, but Apple private keys and service accounts must never be kept
+# in this repository.
+*.p8
+*service-account*.json
+*service_account*.json
+
 # Symbolication related
 app.*.symbols
 

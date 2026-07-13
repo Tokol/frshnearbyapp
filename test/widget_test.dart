@@ -7,7 +7,8 @@ void main() {
     await tester.pumpWidget(const FrshNearbyApp());
     await tester.pumpAndSettle();
 
-    // Test environment defaults to the en locale, so the English tagline shows.
-    expect(find.text('Fresh food from farms near you'), findsOneWidget);
+    // Test environment defaults to the en locale, so the auth entry point shows.
+    expect(find.text('Fresh food near you'), findsOneWidget);
+    expect(find.text('Continue with email'), findsOneWidget);
   });
 }

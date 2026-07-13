@@ -34,7 +34,7 @@
   "authPasswordError": "Käytä vähintään 8 merkkiä.",
   "authAgeError": "Vahvista, että olet vähintään 18-vuotias.",
   "authDemoMessage": "Kaikki näyttää hyvältä! Tunnistautuminen yhdistetään seuraavaksi.",
-  "authSimpleTitle": "Tuore ruoka alkaa tästä",
+  "authSimpleTitle": "Tuoretta ruokaa läheltä",
   "authSimpleSubtitle": "Kirjaudu tai luo tili muutamalla napautuksella.",
   "authContinueGoogle": "Jatka Googlella",
   "authContinueApple": "Jatka Applella",

@@ -43,6 +43,14 @@ dependencies:
   flutter_svg: ^2.0.17
   cached_network_image: ^3.4.1
 
+  # Authentication and onboarding backend.
+  # Pinned as a compatible FlutterFire pair for Flutter 3.29.x.
+  firebase_core: 4.4.0
+  firebase_auth: 6.1.4
+  google_sign_in: ^7.2.0
+  # 1.2+ requires a newer Flutter SDK; 1.1.2 supports Flutter 3.29.
+  image_picker: 1.1.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

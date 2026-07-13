@@ -111,7 +111,7 @@ class AppLocalizationsSv extends AppLocalizations {
   String get authDemoMessage => 'Allt ser bra ut! Autentisering ansluts härnäst.';
 
   @override
-  String get authSimpleTitle => 'Färsk mat börjar här';
+  String get authSimpleTitle => 'Färsk mat nära dig';
 
   @override
   String get authSimpleSubtitle => 'Logga in eller skapa ditt konto med några tryck.';

@@ -111,7 +111,7 @@ class AppLocalizationsFi extends AppLocalizations {
   String get authDemoMessage => 'Kaikki näyttää hyvältä! Tunnistautuminen yhdistetään seuraavaksi.';
 
   @override
-  String get authSimpleTitle => 'Tuore ruoka alkaa tästä';
+  String get authSimpleTitle => 'Tuoretta ruokaa läheltä';
 
   @override
   String get authSimpleSubtitle => 'Kirjaudu tai luo tili muutamalla napautuksella.';

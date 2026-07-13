@@ -82,7 +82,7 @@
   "@authPasswordError": {"description": "Invalid password validation error"},
   "@authAgeError": {"description": "Missing age confirmation error"},
   "@authDemoMessage": {"description": "Prototype submission confirmation"},
-  "authSimpleTitle": "Fresh food starts here",
+  "authSimpleTitle": "Fresh food near you",
   "authSimpleSubtitle": "Sign in or create your account in a few taps.",
   "authContinueGoogle": "Continue with Google",
   "authContinueApple": "Continue with Apple",

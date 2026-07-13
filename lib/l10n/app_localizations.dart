@@ -304,7 +304,7 @@ abstract class AppLocalizations {
   /// No description provided for @authSimpleTitle.
   ///
   /// In en, this message translates to:
-  /// **'Fresh food starts here'**
+  /// **'Fresh food near you'**
   String get authSimpleTitle;
 
   /// No description provided for @authSimpleSubtitle.
