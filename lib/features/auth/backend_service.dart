@@ -64,20 +64,46 @@ class BackendService {
     String query, [
     Map<String, dynamic> variables = const {},
   ]) async {
-    final token = await _auth.currentUser?.getIdToken();
+    return _send(query, variables, forceRefresh: false);
+  }
+
+  Future<Map<String, dynamic>> _send(
+    String query,
+    Map<String, dynamic> variables, {
+    required bool forceRefresh,
+  }) async {
+    final token = await _auth.currentUser?.getIdToken(forceRefresh);
     if (token == null) throw StateError('Please sign in again.');
     final response = await _dio.post<Map<String, dynamic>>(
       '',
       data: {'query': query, 'variables': variables},
-      options: Options(headers: {'authorization': 'Bearer $token'}),
+      options: Options(
+        contentType: Headers.jsonContentType,
+        headers: {'authorization': 'Bearer $token'},
+        validateStatus: (_) => true,
+      ),
     );
     final body = response.data ?? const {};
     final errors = body['errors'] as List<dynamic>?;
     if (errors != null && errors.isNotEmpty) {
+      final first = errors.first as Map<String, dynamic>;
+      final code = (first['extensions'] as Map<String, dynamic>?)?['code'];
+      if (!forceRefresh && code == 'UNAUTHENTICATED') {
+        return _send(query, variables, forceRefresh: true);
+      }
+      throw StateError(first['message'] as String? ?? 'Server request failed.');
+    }
+    final status = response.statusCode ?? 0;
+    if (status < 200 || status >= 300) {
+      final message = body['message'];
       throw StateError(
-        (errors.first as Map<String, dynamic>)['message'] as String? ??
-            'Server request failed.',
+        message is String
+            ? message
+            : 'Server rejected the request (HTTP $status).',
       );
+    }
+    if (body['data'] is! Map<String, dynamic>) {
+      throw StateError('The server returned an invalid response.');
     }
     return body['data'] as Map<String, dynamic>;
   }
