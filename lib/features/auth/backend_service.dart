@@ -102,7 +102,7 @@ class BackendService {
     required String dateOfBirth,
     String? photoUrl,
     required String accountType,
-    required ConfirmedLocation location,
+    ConfirmedLocation? location,
     Map<String, dynamic>? sellerProfile,
   }) async {
     await _gql(
@@ -116,13 +116,15 @@ class BackendService {
         },
       },
     );
-    await confirmLocation(location);
     await _gql(
       'mutation(\$input: SelectAccountTypeInput!) { selectAccountType(input: \$input) { id } }',
       {
         'input': {'accountType': accountType},
       },
     );
+    if (location != null) {
+      await confirmLocation(location);
+    }
     if (accountType == 'SIDE_HUSTLER') {
       await _gql(
         'mutation(\$input: ProducerProfileInput!) { saveProducerProfile(input: \$input) { id } }',

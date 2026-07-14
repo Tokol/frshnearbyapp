@@ -303,7 +303,7 @@ class _AuthScreenState extends State<AuthScreen>
       return;
     }
     final location = _confirmedLocation;
-    if (location == null) {
+    if (_effectiveType != _AccountType.consumer && location == null) {
       _showAuthError('Confirm your location before continuing.');
       return;
     }
@@ -316,17 +316,19 @@ class _AuthScreenState extends State<AuthScreen>
       };
       Map<String, dynamic>? seller;
       if (_effectiveType == _AccountType.producer) {
+        final sellerLocation = location!;
         seller = {
           'publicName': _displayNameController.text.trim(),
           if (_introController.text.trim().isNotEmpty)
             'description': _introController.text.trim(),
           'productionType': 'Local food producer',
-          'address': location.addressLine,
-          'city': location.city,
-          'postalCode': location.postalCode,
-          'country': location.country,
+          'address': sellerLocation.addressLine,
+          'city': sellerLocation.city,
+          'postalCode': sellerLocation.postalCode,
+          'country': sellerLocation.country,
         };
       } else if (_effectiveType == _AccountType.business) {
+        final sellerLocation = location!;
         seller = {
           'publicDisplayName': _displayNameController.text.trim(),
           'legalBusinessName': _businessNameController.text.trim(),
@@ -339,7 +341,7 @@ class _AuthScreenState extends State<AuthScreen>
           'businessAddress': _businessAddressController.text.trim(),
           'city': _businessCityController.text.trim(),
           'postalCode': _businessPostalController.text.trim(),
-          'country': location.country,
+          'country': sellerLocation.country,
         };
       }
       await _backend.finish(
@@ -420,6 +422,10 @@ class _AuthScreenState extends State<AuthScreen>
 
   Future<void> _continueFromDetails() async {
     if (!(_detailsKey.currentState?.validate() ?? false)) return;
+    if (_effectiveType == _AccountType.consumer) {
+      _goTo(5);
+      return;
+    }
     final location = await showModalBottomSheet<ConfirmedLocation>(
       context: context,
       isScrollControlled: true,
