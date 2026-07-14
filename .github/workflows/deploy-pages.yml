@@ -35,7 +35,9 @@ jobs:
         run: flutter analyze
 
       - name: Build Flutter web app
-        run: flutter build web --release --base-href /frshnearbyapp/
+        # Avoid stale service-worker app shells while the onboarding UI is
+        # changing frequently. Re-enable PWA caching for versioned releases.
+        run: flutter build web --release --base-href /frshnearbyapp/ --pwa-strategy=none
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
