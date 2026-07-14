@@ -1,7 +1,7 @@
-import 'dart:typed_data';
-
+import 'package:country_picker/country_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -1189,20 +1189,7 @@ class _DetailsPage extends StatelessWidget {
               ),
               const SizedBox(height: 12),
             ],
-            TextFormField(
-              controller: phoneController,
-              keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(
-                labelText: 'Phone number *',
-                prefixIcon: Icon(Icons.phone_outlined),
-              ),
-              validator: (value) {
-                final digits = value?.replaceAll(RegExp(r'\D'), '') ?? '';
-                return digits.length >= 7
-                    ? null
-                    : 'Enter a valid phone number.';
-              },
-            ),
+            _InternationalPhoneField(controller: phoneController),
             const SizedBox(height: 20),
             _PrimaryButton(label: 'Continue', onPressed: onContinue),
           ],
@@ -1555,6 +1542,97 @@ class _RequiredField extends StatelessWidget {
             value == null || value.trim().isEmpty
                 ? '$label is required.'
                 : null,
+  );
+}
+
+class _InternationalPhoneField extends StatefulWidget {
+  const _InternationalPhoneField({required this.controller});
+  final TextEditingController controller;
+
+  @override
+  State<_InternationalPhoneField> createState() =>
+      _InternationalPhoneFieldState();
+}
+
+class _InternationalPhoneFieldState extends State<_InternationalPhoneField> {
+  late Country _country;
+  final _national = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    final region =
+        WidgetsBinding.instance.platformDispatcher.locale.countryCode;
+    _country = Country.tryParse(region ?? 'FI') ?? Country.parse('FI');
+    _sync();
+  }
+
+  @override
+  void dispose() {
+    _national.dispose();
+    super.dispose();
+  }
+
+  void _sync() {
+    final number = _national.text
+        .replaceAll(RegExp(r'\D'), '')
+        .replaceFirst(RegExp(r'^0+'), '');
+    widget.controller.text = '+${_country.phoneCode}$number';
+  }
+
+  void _chooseCountry() {
+    showCountryPicker(
+      context: context,
+      showPhoneCode: true,
+      countryListTheme: const CountryListThemeData(
+        bottomSheetHeight: 560,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        inputDecoration: InputDecoration(
+          labelText: 'Search country or code',
+          prefixIcon: Icon(Icons.search),
+        ),
+      ),
+      onSelect: (country) {
+        setState(() => _country = country);
+        _sync();
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => TextFormField(
+    controller: _national,
+    keyboardType: TextInputType.phone,
+    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+    onChanged: (_) => _sync(),
+    decoration: InputDecoration(
+      labelText: 'Phone number *',
+      hintText: _country.example.isEmpty ? 'Phone number' : _country.example,
+      prefixIconConstraints: const BoxConstraints(minWidth: 108),
+      prefixIcon: InkWell(
+        onTap: _chooseCountry,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(_country.flagEmoji, style: const TextStyle(fontSize: 21)),
+              const SizedBox(width: 6),
+              Text('+${_country.phoneCode}'),
+              const SizedBox(width: 2),
+              const Icon(Icons.arrow_drop_down, size: 18),
+            ],
+          ),
+        ),
+      ),
+    ),
+    validator: (_) {
+      final value = widget.controller.text;
+      return RegExp(r'^\+[1-9]\d{7,14}$').hasMatch(value)
+          ? null
+          : 'Enter a valid phone number.';
+    },
   );
 }
 
