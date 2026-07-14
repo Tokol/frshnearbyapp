@@ -14,6 +14,8 @@
 	<string>FRSH nearby uses your camera when you choose to take a profile photo.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>FRSH nearby lets you choose a profile photo from your photo library.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>FRSH Nearby uses your location to suggest and confirm the address where you shop or sell locally.</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
