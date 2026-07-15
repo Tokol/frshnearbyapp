@@ -116,6 +116,7 @@ class _SellerLocationVisual extends StatelessWidget {
 class _LocationSheetState extends State<LocationSheet> {
   final _key = GlobalKey<FormState>();
   final _address = TextEditingController();
+  final _addressUnit = TextEditingController();
   final _city = TextEditingController();
   final _postal = TextEditingController();
   final _country = TextEditingController();
@@ -127,6 +128,7 @@ class _LocationSheetState extends State<LocationSheet> {
   @override
   void dispose() {
     _address.dispose();
+    _addressUnit.dispose();
     _city.dispose();
     _postal.dispose();
     _country.dispose();
@@ -314,6 +316,8 @@ class _LocationSheetState extends State<LocationSheet> {
       context,
       ConfirmedLocation(
         addressLine: _address.text.trim(),
+        addressUnit:
+            _addressUnit.text.trim().isEmpty ? null : _addressUnit.text.trim(),
         city: _city.text.trim(),
         postalCode: _postal.text.trim(),
         country: _country.text.trim(),
@@ -404,9 +408,19 @@ class _LocationSheetState extends State<LocationSheet> {
               TextFormField(
                 controller: _address,
                 decoration: const InputDecoration(
-                  labelText: 'Business or production address *',
+                  labelText: 'Street address and number *',
+                  hintText: 'For example: Konejakatu 9',
                 ),
                 validator: _required,
+              ),
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: _addressUnit,
+                decoration: const InputDecoration(
+                  labelText: 'Building, block, unit or floor',
+                  hintText: 'For example: Building Q4, unit A 9',
+                  prefixIcon: Icon(Icons.apartment_outlined),
+                ),
               ),
               if (kIsWeb) ...[
                 const SizedBox(height: 8),

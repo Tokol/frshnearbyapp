@@ -163,6 +163,7 @@ class _AuthScreenState extends State<AuthScreen>
       if (location != null) {
         _confirmedLocation = ConfirmedLocation(
           addressLine: location['addressLine'] as String? ?? '',
+          addressUnit: location['addressUnit'] as String?,
           city: location['city'] as String? ?? '',
           postalCode: location['postalCode'] as String? ?? '',
           country: location['country'] as String? ?? '',
@@ -351,6 +352,7 @@ class _AuthScreenState extends State<AuthScreen>
     if (profile.addressLine != null && profile.country != null) {
       _confirmedLocation = ConfirmedLocation(
         addressLine: profile.addressLine!,
+        addressUnit: profile.addressUnit,
         city: profile.city ?? '',
         postalCode: profile.postalCode ?? '',
         country: profile.country!,
@@ -488,7 +490,7 @@ class _AuthScreenState extends State<AuthScreen>
           if (_introController.text.trim().isNotEmpty)
             'description': _introController.text.trim(),
           'productionType': 'Local food producer',
-          'address': sellerLocation.addressLine,
+          'address': sellerLocation.formattedAddress,
           'city': sellerLocation.city,
           'postalCode': sellerLocation.postalCode,
           'country': sellerLocation.country,
@@ -504,7 +506,7 @@ class _AuthScreenState extends State<AuthScreen>
           if (_vatController.text.trim().isNotEmpty)
             'vatNumber': _vatController.text.trim(),
           'businessType': _businessType,
-          'businessAddress': _businessAddressController.text.trim(),
+          'businessAddress': sellerLocation.formattedAddress,
           'city': _businessCityController.text.trim(),
           'postalCode': _businessPostalController.text.trim(),
           'country': sellerLocation.country,
@@ -637,7 +639,7 @@ class _AuthScreenState extends State<AuthScreen>
     if (location == null || !mounted) return;
     _confirmedLocation = location;
     _scheduleDraftSave();
-    _businessAddressController.text = location.addressLine;
+    _businessAddressController.text = location.formattedAddress;
     _businessCityController.text = location.city;
     _businessPostalController.text = location.postalCode;
     try {
@@ -657,7 +659,7 @@ class _AuthScreenState extends State<AuthScreen>
     if (_introController.text.trim().isNotEmpty)
       'description': _introController.text.trim(),
     'productionType': 'Local food producer',
-    'address': location.addressLine,
+    'address': location.formattedAddress,
     'city': location.city,
     'postalCode': location.postalCode,
     'country': location.country,
@@ -1687,10 +1689,12 @@ class _ReviewPage extends StatelessWidget {
                 icon: Icons.location_on_outlined,
                 title: 'Registered location',
                 value: [
+                  location!.addressLine,
+                  location!.addressUnit,
                   location!.postalCode,
                   location!.city,
                   location!.country,
-                ].where((value) => value.isNotEmpty).join(', '),
+                ].where((value) => value?.isNotEmpty == true).join(', '),
                 onEdit: onEditProfile,
               ),
             ],

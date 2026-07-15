@@ -11,6 +11,7 @@ class BackendUser {
     this.photoUrl,
     this.dateOfBirth,
     this.addressLine,
+    this.addressUnit,
     this.city,
     this.postalCode,
     this.country,
@@ -27,6 +28,7 @@ class BackendUser {
   final String? photoUrl;
   final String? dateOfBirth;
   final String? addressLine;
+  final String? addressUnit;
   final String? city;
   final String? postalCode;
   final String? country;
@@ -44,6 +46,7 @@ class BackendUser {
     photoUrl: json['photoUrl'] as String?,
     dateOfBirth: json['dateOfBirth'] as String?,
     addressLine: json['addressLine'] as String?,
+    addressUnit: json['addressUnit'] as String?,
     city: json['city'] as String?,
     postalCode: json['postalCode'] as String?,
     country: json['country'] as String?,
@@ -57,6 +60,7 @@ class BackendUser {
 class ConfirmedLocation {
   const ConfirmedLocation({
     required this.addressLine,
+    this.addressUnit,
     required this.city,
     required this.postalCode,
     required this.country,
@@ -64,14 +68,22 @@ class ConfirmedLocation {
     required this.longitude,
   });
   final String addressLine;
+  final String? addressUnit;
   final String city;
   final String postalCode;
   final String country;
   final double latitude;
   final double longitude;
 
+  String get formattedAddress => [
+    addressLine,
+    addressUnit,
+  ].where((value) => value?.isNotEmpty == true).join(', ');
+
   Map<String, dynamic> toJson() => {
     'addressLine': addressLine,
+    if (addressUnit != null && addressUnit!.isNotEmpty)
+      'addressUnit': addressUnit,
     'city': city,
     'postalCode': postalCode,
     'country': country,
@@ -149,7 +161,7 @@ class BackendService {
 
   Future<BackendUser> session() async {
     final data = await _gql(
-      'query { session { user { onboardingStep verificationStatus roles displayName phone photoUrl dateOfBirth addressLine city postalCode country latitude longitude producerProfile { publicName description productionType address city postalCode country } businessProfile { publicDisplayName legalBusinessName farmName businessId vatNumber businessType businessAddress city postalCode country logoUrl } } } }',
+      'query { session { user { onboardingStep verificationStatus roles displayName phone photoUrl dateOfBirth addressLine addressUnit city postalCode country latitude longitude producerProfile { publicName description productionType address city postalCode country } businessProfile { publicDisplayName legalBusinessName farmName businessId vatNumber businessType businessAddress city postalCode country logoUrl } } } }',
     );
     return BackendUser.fromJson(
       (data['session'] as Map<String, dynamic>)['user'] as Map<String, dynamic>,
