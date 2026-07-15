@@ -6,6 +6,7 @@ class BackendUser {
     required this.onboardingStep,
     required this.verificationStatus,
     required this.roles,
+    this.latestVerificationMessage,
     this.displayName,
     this.phone,
     this.photoUrl,
@@ -23,6 +24,7 @@ class BackendUser {
   final String onboardingStep;
   final String verificationStatus;
   final List<String> roles;
+  final String? latestVerificationMessage;
   final String? displayName;
   final String? phone;
   final String? photoUrl;
@@ -41,6 +43,7 @@ class BackendUser {
     onboardingStep: json['onboardingStep'] as String,
     verificationStatus: json['verificationStatus'] as String,
     roles: (json['roles'] as List<dynamic>).cast<String>(),
+    latestVerificationMessage: json['latestVerificationMessage'] as String?,
     displayName: json['displayName'] as String?,
     phone: json['phone'] as String?,
     photoUrl: json['photoUrl'] as String?,
@@ -161,7 +164,7 @@ class BackendService {
 
   Future<BackendUser> session() async {
     final data = await _gql(
-      'query { session { user { onboardingStep verificationStatus roles displayName phone photoUrl dateOfBirth addressLine addressUnit city postalCode country latitude longitude producerProfile { publicName description productionType address city postalCode country } businessProfile { publicDisplayName legalBusinessName farmName businessId vatNumber businessType businessAddress city postalCode country logoUrl } } } }',
+      'query { session { user { onboardingStep verificationStatus latestVerificationMessage roles displayName phone photoUrl dateOfBirth addressLine addressUnit city postalCode country latitude longitude producerProfile { publicName description productionType address city postalCode country } businessProfile { publicDisplayName legalBusinessName farmName businessId vatNumber businessType businessAddress city postalCode country logoUrl } } } }',
     );
     return BackendUser.fromJson(
       (data['session'] as Map<String, dynamic>)['user'] as Map<String, dynamic>,

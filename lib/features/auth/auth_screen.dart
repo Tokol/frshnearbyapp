@@ -67,6 +67,7 @@ class _AuthScreenState extends State<AuthScreen>
   ConfirmedLocation? _confirmedLocation;
   String? _businessType;
   String _verificationStatus = 'NOT_REQUIRED';
+  String? _verificationMessage;
   Timer? _draftTimer;
 
   _AccountType get _effectiveType => _sellerType ?? _AccountType.consumer;
@@ -323,6 +324,7 @@ class _AuthScreenState extends State<AuthScreen>
     }
     _socialPhotoUrl = profile.photoUrl ?? _socialPhotoUrl;
     _verificationStatus = profile.verificationStatus;
+    _verificationMessage = profile.latestVerificationMessage;
     if (profile.roles.contains('BUSINESS')) {
       _sellerType = _AccountType.business;
     } else if (profile.roles.contains('SIDE_HUSTLER')) {
@@ -558,7 +560,10 @@ class _AuthScreenState extends State<AuthScreen>
     try {
       await _backend.submitForVerification();
       if (!mounted) return;
-      setState(() => _verificationStatus = 'SUBMITTED');
+      setState(() {
+        _verificationStatus = 'SUBMITTED';
+        _verificationMessage = null;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Your verification request was sent for review.'),
@@ -905,6 +910,7 @@ class _AuthScreenState extends State<AuthScreen>
                                     _businessNameController.text.trim(),
                                 location: _confirmedLocation,
                                 verificationStatus: _verificationStatus,
+                                verificationMessage: _verificationMessage,
                                 busy: _authBusy,
                                 onEditProfile: () => _goTo(3),
                                 onEditBusiness:
@@ -1863,6 +1869,7 @@ class _ProfilePage extends StatelessWidget {
     required this.businessName,
     required this.location,
     required this.verificationStatus,
+    required this.verificationMessage,
     required this.busy,
     required this.onEditProfile,
     required this.onEditBusiness,
@@ -1879,6 +1886,7 @@ class _ProfilePage extends StatelessWidget {
   final String businessName;
   final ConfirmedLocation? location;
   final String verificationStatus;
+  final String? verificationMessage;
   final bool busy;
   final VoidCallback onEditProfile;
   final VoidCallback? onEditBusiness;
@@ -2025,10 +2033,31 @@ class _ProfilePage extends StatelessWidget {
                       ),
                     ],
                   ),
+                  if (verificationMessage?.isNotEmpty == true &&
+                      const {
+                        'NEEDS_CHANGES',
+                        'REJECTED',
+                      }.contains(verificationStatus)) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.72),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        verificationMessage!,
+                        style: const TextStyle(fontSize: 13, height: 1.4),
+                      ),
+                    ),
+                  ],
                   if (canVerify) ...[
                     const SizedBox(height: 13),
                     _PrimaryButton(
-                      label: 'Apply for verification',
+                      label:
+                          verificationStatus == 'NEEDS_CHANGES'
+                              ? 'Resubmit for verification'
+                              : 'Apply for verification',
                       onPressed: onVerify,
                       loading: busy,
                     ),
