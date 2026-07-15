@@ -7,9 +7,110 @@ import 'package:geolocator/geolocator.dart';
 import 'backend_service.dart';
 
 class LocationSheet extends StatefulWidget {
-  const LocationSheet({super.key});
+  const LocationSheet({required this.isBusiness, super.key});
+  final bool isBusiness;
   @override
   State<LocationSheet> createState() => _LocationSheetState();
+}
+
+class _SellerLocationVisual extends StatelessWidget {
+  const _SellerLocationVisual({required this.isBusiness});
+  final bool isBusiness;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    height: 118,
+    decoration: BoxDecoration(
+      color: const Color(0xFFF0F6E9),
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: const Color(0xFFD9E6D1)),
+    ),
+    child: Stack(
+      alignment: Alignment.center,
+      children: [
+        Positioned(
+          right: -18,
+          bottom: -34,
+          child: Container(
+            width: 130,
+            height: 130,
+            decoration: const BoxDecoration(
+              color: Color(0xFFDDECD7),
+              shape: BoxShape.circle,
+            ),
+          ),
+        ),
+        Row(
+          children: [
+            const SizedBox(width: 22),
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x160E3522),
+                    blurRadius: 14,
+                    offset: Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Icon(
+                    isBusiness
+                        ? Icons.storefront_rounded
+                        : Icons.agriculture_rounded,
+                    color: const Color(0xFF2F6B45),
+                    size: 37,
+                  ),
+                  const Positioned(
+                    right: 7,
+                    bottom: 7,
+                    child: CircleAvatar(
+                      radius: 11,
+                      backgroundColor: Color(0xFFE9CD7A),
+                      child: Icon(
+                        Icons.location_on_rounded,
+                        size: 15,
+                        color: Color(0xFF184D31),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    isBusiness ? 'Business location' : 'Seller location',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                      color: Color(0xFF183326),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'This location powers nearby discovery.',
+                    style: TextStyle(color: Color(0xFF647267), fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 18),
+          ],
+        ),
+      ],
+    ),
+  );
 }
 
 class _LocationSheetState extends State<LocationSheet> {
@@ -21,12 +122,7 @@ class _LocationSheetState extends State<LocationSheet> {
   bool _busy = false;
   double? _lat;
   double? _lng;
-
-  @override
-  void initState() {
-    super.initState();
-    _detect();
-  }
+  String? _detectedAddressSignature;
 
   @override
   void dispose() {
@@ -75,6 +171,7 @@ class _LocationSheetState extends State<LocationSheet> {
           _city.text = p.locality ?? p.administrativeArea ?? '';
           _postal.text = p.postalCode ?? '';
           _country.text = p.country ?? '';
+          _detectedAddressSignature = _addressSignature;
         }
       }
     } catch (error) {
@@ -129,10 +226,90 @@ class _LocationSheetState extends State<LocationSheet> {
         '';
     _postal.text = address['postcode'] as String? ?? '';
     _country.text = address['country'] as String? ?? '';
+    _detectedAddressSignature = _addressSignature;
   }
 
-  void _confirm() {
+  String get _addressSignature => [
+    _address.text.trim().toLowerCase(),
+    _postal.text.trim().toLowerCase(),
+    _city.text.trim().toLowerCase(),
+    _country.text.trim().toLowerCase(),
+  ].join('|');
+
+  Future<void> _resolveEnteredAddress() async {
+    if (_detectedAddressSignature == _addressSignature &&
+        _lat != null &&
+        _lng != null) {
+      return;
+    }
+    final query = [
+      _address.text.trim(),
+      _postal.text.trim(),
+      _city.text.trim(),
+      _country.text.trim(),
+    ].where((value) => value.isNotEmpty).join(', ');
+    if (kIsWeb) {
+      const endpoint = String.fromEnvironment(
+        'FRSH_GEOCODE_SEARCH_URL',
+        defaultValue: 'https://nominatim.openstreetmap.org/search',
+      );
+      final response = await Dio().get<List<dynamic>>(
+        endpoint,
+        queryParameters: {
+          'format': 'jsonv2',
+          'q': query,
+          'limit': 1,
+          'addressdetails': 1,
+        },
+        options: Options(
+          headers: {'Accept': 'application/json'},
+          receiveTimeout: const Duration(seconds: 12),
+        ),
+      );
+      final results = response.data;
+      if (results == null || results.isEmpty) {
+        throw StateError(
+          'We could not locate this address. Check it and try again.',
+        );
+      }
+      final result = results.first as Map<String, dynamic>;
+      _lat = double.tryParse(result['lat'] as String? ?? '');
+      _lng = double.tryParse(result['lon'] as String? ?? '');
+    } else {
+      final results = await locationFromAddress(query);
+      if (results.isEmpty) {
+        throw StateError(
+          'We could not locate this address. Check it and try again.',
+        );
+      }
+      _lat = results.first.latitude;
+      _lng = results.first.longitude;
+    }
+    if (_lat == null || _lng == null) {
+      throw StateError(
+        'We could not locate this address. Check it and try again.',
+      );
+    }
+  }
+
+  Future<void> _confirm() async {
     if (!(_key.currentState?.validate() ?? false)) return;
+    setState(() => _busy = true);
+    try {
+      await _resolveEnteredAddress();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(error.toString().replaceFirst('Bad state: ', '')),
+          ),
+        );
+      }
+      return;
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+    if (!mounted) return;
     Navigator.pop(
       context,
       ConfirmedLocation(
@@ -164,20 +341,27 @@ class _LocationSheetState extends State<LocationSheet> {
             children: [
               Row(
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Confirm your location',
-                          style: TextStyle(
+                          widget.isBusiness
+                              ? 'Where is your business?'
+                              : 'Where do you make or sell?',
+                          style: const TextStyle(
                             fontSize: 24,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
                         Text(
-                          'Used to show fresh food near you. You can change it.',
-                          style: TextStyle(color: Color(0xFF647267)),
+                          widget.isBusiness
+                              ? 'Add the storefront, farm or operating location customers should discover.'
+                              : 'Add your farm, kitchen, pickup point or production location.',
+                          style: const TextStyle(
+                            color: Color(0xFF647267),
+                            height: 1.35,
+                          ),
                         ),
                       ],
                     ),
@@ -188,6 +372,8 @@ class _LocationSheetState extends State<LocationSheet> {
                   ),
                 ],
               ),
+              const SizedBox(height: 18),
+              _SellerLocationVisual(isBusiness: widget.isBusiness),
               const SizedBox(height: 16),
               OutlinedButton.icon(
                 onPressed: _busy ? null : _detect,
@@ -199,14 +385,26 @@ class _LocationSheetState extends State<LocationSheet> {
                         )
                         : const Icon(Icons.my_location),
                 label: Text(
-                  _busy ? 'Detecting location…' : 'Use my current location',
+                  _busy
+                      ? 'Finding this address…'
+                      : 'Suggest from my current position',
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Optional shortcut only. Edit the address below if you are not currently at the seller location.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Color(0xFF647267),
+                  fontSize: 11,
+                  height: 1.35,
                 ),
               ),
               const SizedBox(height: 14),
               TextFormField(
                 controller: _address,
                 decoration: const InputDecoration(
-                  labelText: 'Street address *',
+                  labelText: 'Business or production address *',
                 ),
                 validator: _required,
               ),
@@ -247,10 +445,10 @@ class _LocationSheetState extends State<LocationSheet> {
               ),
               const SizedBox(height: 18),
               FilledButton(
-                onPressed: _confirm,
+                onPressed: _busy ? null : _confirm,
                 child: const Padding(
                   padding: EdgeInsets.all(14),
-                  child: Text('Confirm this address'),
+                  child: Text('Confirm seller location'),
                 ),
               ),
             ],

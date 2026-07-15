@@ -629,7 +629,10 @@ class _AuthScreenState extends State<AuthScreen>
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (_) => const LocationSheet(),
+      builder:
+          (_) => LocationSheet(
+            isBusiness: _effectiveType == _AccountType.business,
+          ),
     );
     if (location == null || !mounted) return;
     _confirmedLocation = location;
