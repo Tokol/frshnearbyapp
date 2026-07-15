@@ -722,15 +722,7 @@ class _AuthScreenState extends State<AuthScreen>
             child: Column(
               children: [
                 _TopBar(page: _page, onBack: _goBack),
-                SizedBox(
-                  height:
-                      _page == 0
-                          ? (MediaQuery.sizeOf(context).height * .30).clamp(
-                            150.0,
-                            240.0,
-                          )
-                          : 116,
-                ),
+                SizedBox(height: _page == 0 ? 104 : 72),
                 Expanded(
                   child: Container(
                     width: double.infinity,
@@ -1059,7 +1051,7 @@ class _WelcomePage extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Center(child: _Eyebrow('WELCOME TO FRSH NEARBY')),
+        const Center(child: _Eyebrow('WELCOME')),
         const Text(
           'Fresh food near you',
           textAlign: TextAlign.center,
@@ -1076,17 +1068,6 @@ class _WelcomePage extends StatelessWidget {
           'One account for discovering, making and selling local food.',
           textAlign: TextAlign.center,
           style: TextStyle(color: _muted, fontSize: 14, height: 1.4),
-        ),
-        const SizedBox(height: 18),
-        const Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _TrustPill(icon: Icons.near_me_outlined, text: 'Nearby'),
-            SizedBox(width: 7),
-            _TrustPill(icon: Icons.verified_outlined, text: 'Trusted'),
-            SizedBox(width: 7),
-            _TrustPill(icon: Icons.eco_outlined, text: 'Local'),
-          ],
         ),
         const SizedBox(height: 22),
         _ProviderButton(
@@ -1113,53 +1094,11 @@ class _WelcomePage extends StatelessWidget {
           label: const Text('Continue with email'),
           style: _outlineStyle,
         ),
-        const SizedBox(height: 16),
-        Container(
-          padding: const EdgeInsets.all(13),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF3F7EE),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: const Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(Icons.lock_outline_rounded, color: _green, size: 18),
-              SizedBox(width: 9),
-              Expanded(
-                child: Text(
-                  'Secure sign-in. Existing accounts return to their saved setup automatically.',
-                  style: TextStyle(color: _muted, fontSize: 11.5, height: 1.35),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
-class _TrustPill extends StatelessWidget {
-  const _TrustPill({required this.icon, required this.text});
-  final IconData icon;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
-    decoration: BoxDecoration(
-      color: const Color(0xFFF7F9F3),
-      borderRadius: BorderRadius.circular(99),
-      border: Border.all(color: _line),
-    ),
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 14, color: _green),
-        const SizedBox(width: 4),
-        Text(
-          text,
-          style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800),
+        const SizedBox(height: 14),
+        const Text(
+          'Secure sign-in • your saved setup resumes automatically',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: _muted, fontSize: 11.5),
         ),
       ],
     ),
