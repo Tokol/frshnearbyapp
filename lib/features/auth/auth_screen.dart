@@ -1561,8 +1561,18 @@ class _InternationalPhoneFieldState extends State<_InternationalPhoneField> {
   @override
   void initState() {
     super.initState();
+    final locales = WidgetsBinding.instance.platformDispatcher.locales;
     final region =
-        WidgetsBinding.instance.platformDispatcher.locale.countryCode;
+        locales
+            .map((locale) => locale.countryCode?.toUpperCase())
+            .whereType<String>()
+            .where((code) => code.isNotEmpty && code != 'US')
+            .firstOrNull;
+
+    // Many browsers report en-US even when the user is physically elsewhere.
+    // FRSH Nearby currently launches in Finland, so do not turn that generic
+    // browser fallback into an incorrect +1 default. The picker remains
+    // available for users whose calling code differs from their device region.
     _country = Country.tryParse(region ?? 'FI') ?? Country.parse('FI');
     _sync();
   }
