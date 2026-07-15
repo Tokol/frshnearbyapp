@@ -5,13 +5,52 @@ class BackendUser {
   const BackendUser({
     required this.onboardingStep,
     required this.verificationStatus,
+    required this.roles,
+    this.displayName,
+    this.phone,
+    this.photoUrl,
+    this.dateOfBirth,
+    this.addressLine,
+    this.city,
+    this.postalCode,
+    this.country,
+    this.latitude,
+    this.longitude,
+    this.producerProfile,
+    this.businessProfile,
   });
   final String onboardingStep;
   final String verificationStatus;
+  final List<String> roles;
+  final String? displayName;
+  final String? phone;
+  final String? photoUrl;
+  final String? dateOfBirth;
+  final String? addressLine;
+  final String? city;
+  final String? postalCode;
+  final String? country;
+  final double? latitude;
+  final double? longitude;
+  final Map<String, dynamic>? producerProfile;
+  final Map<String, dynamic>? businessProfile;
 
   factory BackendUser.fromJson(Map<String, dynamic> json) => BackendUser(
     onboardingStep: json['onboardingStep'] as String,
     verificationStatus: json['verificationStatus'] as String,
+    roles: (json['roles'] as List<dynamic>).cast<String>(),
+    displayName: json['displayName'] as String?,
+    phone: json['phone'] as String?,
+    photoUrl: json['photoUrl'] as String?,
+    dateOfBirth: json['dateOfBirth'] as String?,
+    addressLine: json['addressLine'] as String?,
+    city: json['city'] as String?,
+    postalCode: json['postalCode'] as String?,
+    country: json['country'] as String?,
+    latitude: (json['latitude'] as num?)?.toDouble(),
+    longitude: (json['longitude'] as num?)?.toDouble(),
+    producerProfile: json['producerProfile'] as Map<String, dynamic>?,
+    businessProfile: json['businessProfile'] as Map<String, dynamic>?,
   );
 }
 
@@ -110,12 +149,46 @@ class BackendService {
 
   Future<BackendUser> session() async {
     final data = await _gql(
-      'query { session { user { onboardingStep verificationStatus } } }',
+      'query { session { user { onboardingStep verificationStatus roles displayName phone photoUrl dateOfBirth addressLine city postalCode country latitude longitude producerProfile { publicName description productionType address city postalCode country } businessProfile { publicDisplayName legalBusinessName farmName businessId vatNumber businessType businessAddress city postalCode country logoUrl } } } }',
     );
     return BackendUser.fromJson(
       (data['session'] as Map<String, dynamic>)['user'] as Map<String, dynamic>,
     );
   }
+
+  Future<void> saveAccountType(String accountType) => _gql(
+    'mutation(\$input: SelectAccountTypeInput!) { selectAccountType(input: \$input) { id } }',
+    {
+      'input': {'accountType': accountType},
+    },
+  );
+
+  Future<void> savePersonalProfile({
+    required String displayName,
+    required String phone,
+    required String dateOfBirth,
+    String? photoUrl,
+  }) => _gql(
+    'mutation(\$input: PersonalProfileInput!) { updatePersonalProfile(input: \$input) { id } }',
+    {
+      'input': {
+        'displayName': displayName,
+        'phone': phone,
+        'dateOfBirth': dateOfBirth,
+        if (photoUrl != null) 'photoUrl': photoUrl,
+      },
+    },
+  );
+
+  Future<void> saveProducerProfile(Map<String, dynamic> input) => _gql(
+    'mutation(\$input: ProducerProfileInput!) { saveProducerProfile(input: \$input) { id } }',
+    {'input': input},
+  );
+
+  Future<void> saveBusinessProfile(Map<String, dynamic> input) => _gql(
+    'mutation(\$input: BusinessProfileInput!) { saveBusinessProfile(input: \$input) { id } }',
+    {'input': input},
+  );
 
   Future<void> confirmLocation(ConfirmedLocation location) => _gql(
     'mutation(\$input: ConfirmLocationInput!) { confirmLocation(input: \$input) { id } }',
@@ -132,6 +205,12 @@ class BackendService {
     Map<String, dynamic>? sellerProfile,
   }) async {
     await _gql(
+      'mutation(\$input: SelectAccountTypeInput!) { selectAccountType(input: \$input) { id } }',
+      {
+        'input': {'accountType': accountType},
+      },
+    );
+    await _gql(
       'mutation(\$input: PersonalProfileInput!) { updatePersonalProfile(input: \$input) { id } }',
       {
         'input': {
@@ -142,12 +221,6 @@ class BackendService {
         },
       },
     );
-    await _gql(
-      'mutation(\$input: SelectAccountTypeInput!) { selectAccountType(input: \$input) { id } }',
-      {
-        'input': {'accountType': accountType},
-      },
-    );
     if (location != null) {
       await confirmLocation(location);
     }
@@ -156,13 +229,11 @@ class BackendService {
         'mutation(\$input: ProducerProfileInput!) { saveProducerProfile(input: \$input) { id } }',
         {'input': sellerProfile},
       );
-      await _gql('mutation { submitForVerification { id } }');
     } else if (accountType == 'BUSINESS') {
       await _gql(
         'mutation(\$input: BusinessProfileInput!) { saveBusinessProfile(input: \$input) { id } }',
         {'input': sellerProfile},
       );
-      await _gql('mutation { submitForVerification { id } }');
     }
   }
 }

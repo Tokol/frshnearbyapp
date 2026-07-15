@@ -96,12 +96,8 @@ class _AuthScreenState extends State<AuthScreen>
     try {
       final profile = await _backend.session();
       if (!mounted) return;
-      _goTo(
-        profile.onboardingStep == 'COMPLETE' ||
-                profile.onboardingStep == 'SUBMITTED_FOR_REVIEW'
-            ? 6
-            : 2,
-      );
+      _restoreBackendProfile(profile);
+      _goTo(_resumePage(profile));
     } catch (error) {
       if (mounted) _showAuthError(_serverMessage(error));
     }
@@ -149,12 +145,8 @@ class _AuthScreenState extends State<AuthScreen>
       }
       final profile = await _backend.session();
       if (!mounted) return;
-      _goTo(
-        profile.onboardingStep == 'COMPLETE' ||
-                profile.onboardingStep == 'SUBMITTED_FOR_REVIEW'
-            ? 6
-            : 2,
-      );
+      _restoreBackendProfile(profile);
+      _goTo(_resumePage(profile));
     } on AuthCancelledException {
       // Closing a provider dialog is an intentional action, not an error.
     } on FirebaseAuthException catch (error) {
@@ -209,6 +201,78 @@ class _AuthScreenState extends State<AuthScreen>
       _displayNameController.text = user.displayName!;
     }
     _socialPhotoUrl ??= user.photoURL;
+  }
+
+  void _restoreBackendProfile(BackendUser profile) {
+    if (profile.displayName?.isNotEmpty ?? false) {
+      _fullNameController.text = profile.displayName!;
+    }
+    if (profile.phone?.isNotEmpty ?? false) {
+      _phoneController.text = profile.phone!;
+    }
+    if (profile.dateOfBirth != null) {
+      final date = DateTime.tryParse(profile.dateOfBirth!);
+      if (date != null) {
+        _dateOfBirthController.text =
+            '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+      }
+    }
+    _socialPhotoUrl = profile.photoUrl ?? _socialPhotoUrl;
+    if (profile.roles.contains('BUSINESS')) {
+      _sellerType = _AccountType.business;
+    } else if (profile.roles.contains('SIDE_HUSTLER')) {
+      _sellerType = _AccountType.producer;
+    } else {
+      _sellerType = null;
+    }
+    _isConsumer = profile.roles.contains('CONSUMER');
+    final producer = profile.producerProfile;
+    if (producer != null) {
+      _displayNameController.text = producer['publicName'] as String? ?? '';
+      _introController.text = producer['description'] as String? ?? '';
+    }
+    final business = profile.businessProfile;
+    if (business != null) {
+      _displayNameController.text =
+          business['publicDisplayName'] as String? ?? '';
+      _businessNameController.text =
+          business['legalBusinessName'] as String? ?? '';
+      _farmNameController.text = business['farmName'] as String? ?? '';
+      _businessIdController.text = business['businessId'] as String? ?? '';
+      _vatController.text = business['vatNumber'] as String? ?? '';
+      _businessType = business['businessType'] as String?;
+      _businessAddressController.text =
+          business['businessAddress'] as String? ?? '';
+      _businessCityController.text = business['city'] as String? ?? '';
+      _businessPostalController.text = business['postalCode'] as String? ?? '';
+    }
+    if (profile.addressLine != null && profile.country != null) {
+      _confirmedLocation = ConfirmedLocation(
+        addressLine: profile.addressLine!,
+        city: profile.city ?? '',
+        postalCode: profile.postalCode ?? '',
+        country: profile.country!,
+        latitude: profile.latitude ?? 0,
+        longitude: profile.longitude ?? 0,
+      );
+    }
+  }
+
+  int _resumePage(BackendUser profile) {
+    if (profile.onboardingStep == 'COMPLETE' ||
+        profile.onboardingStep == 'SUBMITTED_FOR_REVIEW') {
+      return 6;
+    }
+    if (profile.onboardingStep == 'BUSINESS_DETAILS_REQUIRED' &&
+        profile.phone != null) {
+      return 4;
+    }
+    if (profile.onboardingStep == 'PRODUCER_DETAILS_REQUIRED' ||
+        profile.onboardingStep == 'BUSINESS_DETAILS_REQUIRED' ||
+        profile.onboardingStep == 'PROFILE_REQUIRED') {
+      return 3;
+    }
+    return 2;
   }
 
   Future<void> _changeVerificationEmail() async {
@@ -410,7 +474,23 @@ class _AuthScreenState extends State<AuthScreen>
     );
   }
 
-  void _continueFromRole() => _goTo(3);
+  Future<void> _continueFromRole() async {
+    setState(() => _authBusy = true);
+    try {
+      await _backend.saveAccountType(_accountTypeCode);
+      if (mounted) _goTo(3);
+    } catch (error) {
+      if (mounted) _showAuthError(_serverMessage(error));
+    } finally {
+      if (mounted) setState(() => _authBusy = false);
+    }
+  }
+
+  String get _accountTypeCode => switch (_effectiveType) {
+    _AccountType.consumer => 'CONSUMER',
+    _AccountType.producer => 'SIDE_HUSTLER',
+    _AccountType.business => 'BUSINESS',
+  };
 
   void _goBack() {
     if (_page == 5 && _sellerType != _AccountType.business) {
@@ -422,6 +502,21 @@ class _AuthScreenState extends State<AuthScreen>
 
   Future<void> _continueFromDetails() async {
     if (!(_detailsKey.currentState?.validate() ?? false)) return;
+    setState(() => _authBusy = true);
+    try {
+      await _backend.savePersonalProfile(
+        displayName: _fullNameController.text.trim(),
+        phone: _phoneController.text.trim(),
+        dateOfBirth: _isoDate(_dateOfBirthController.text),
+        photoUrl: _socialPhotoUrl,
+      );
+    } catch (error) {
+      if (mounted) _showAuthError(_serverMessage(error));
+      return;
+    } finally {
+      if (mounted) setState(() => _authBusy = false);
+    }
+    if (!mounted) return;
     if (_effectiveType == _AccountType.consumer) {
       _goTo(5);
       return;
@@ -437,7 +532,58 @@ class _AuthScreenState extends State<AuthScreen>
     _businessAddressController.text = location.addressLine;
     _businessCityController.text = location.city;
     _businessPostalController.text = location.postalCode;
+    try {
+      await _backend.confirmLocation(location);
+      if (_effectiveType == _AccountType.producer) {
+        await _backend.saveProducerProfile(_producerPayload(location));
+      }
+    } catch (error) {
+      if (mounted) _showAuthError(_serverMessage(error));
+      return;
+    }
     _goTo(_sellerType == _AccountType.business ? 4 : 5);
+  }
+
+  Map<String, dynamic> _producerPayload(ConfirmedLocation location) => {
+    'publicName': _displayNameController.text.trim(),
+    if (_introController.text.trim().isNotEmpty)
+      'description': _introController.text.trim(),
+    'productionType': 'Local food producer',
+    'address': location.addressLine,
+    'city': location.city,
+    'postalCode': location.postalCode,
+    'country': location.country,
+  };
+
+  Future<void> _continueFromBusiness() async {
+    if (!(_businessKey.currentState?.validate() ?? false)) return;
+    final location = _confirmedLocation;
+    if (location == null) {
+      _showAuthError('Confirm your registered location first.');
+      return;
+    }
+    setState(() => _authBusy = true);
+    try {
+      await _backend.saveBusinessProfile({
+        'publicDisplayName': _displayNameController.text.trim(),
+        'legalBusinessName': _businessNameController.text.trim(),
+        if (_farmNameController.text.trim().isNotEmpty)
+          'farmName': _farmNameController.text.trim(),
+        'businessId': _businessIdController.text.trim(),
+        if (_vatController.text.trim().isNotEmpty)
+          'vatNumber': _vatController.text.trim(),
+        'businessType': _businessType,
+        'businessAddress': _businessAddressController.text.trim(),
+        'city': _businessCityController.text.trim(),
+        'postalCode': _businessPostalController.text.trim(),
+        'country': location.country,
+      });
+      if (mounted) _goTo(5);
+    } catch (error) {
+      if (mounted) _showAuthError(_serverMessage(error));
+    } finally {
+      if (mounted) setState(() => _authBusy = false);
+    }
   }
 
   String _isoDate(String value) {
@@ -570,12 +716,7 @@ class _AuthScreenState extends State<AuthScreen>
                                 onBusinessType:
                                     (value) =>
                                         setState(() => _businessType = value),
-                                onContinue: () {
-                                  if (_businessKey.currentState?.validate() ??
-                                      false) {
-                                    _goTo(5);
-                                  }
-                                },
+                                onContinue: _continueFromBusiness,
                               ),
                               _ReviewPage(
                                 type: _effectiveType,
@@ -1358,12 +1499,12 @@ class _ReviewPage extends StatelessWidget {
             title: 'Profile details',
             value: 'Ready to publish',
           ),
-          if (type == _AccountType.business) ...[
+          if (type != _AccountType.consumer) ...[
             const SizedBox(height: 10),
             const _SummaryTile(
               icon: Icons.verified_user_outlined,
-              title: 'Business verification',
-              value: 'Submitted for review',
+              title: 'Seller verification',
+              value: 'Available later from your profile',
             ),
           ],
           const SizedBox(height: 18),
@@ -1446,7 +1587,7 @@ class _CompletePage extends StatelessWidget {
         Text(
           type == _AccountType.consumer
               ? 'Your local food journey starts now.'
-              : 'Your profile is ready. We’ll let you know when verification is complete.',
+              : 'Your profile is ready. You can apply for seller verification later from your profile.',
           textAlign: TextAlign.center,
           style: const TextStyle(color: _muted, height: 1.4),
         ),
@@ -1557,6 +1698,7 @@ class _InternationalPhoneField extends StatefulWidget {
 class _InternationalPhoneFieldState extends State<_InternationalPhoneField> {
   late Country _country;
   final _national = TextEditingController();
+  bool _writingCanonical = false;
 
   @override
   void initState() {
@@ -1574,20 +1716,44 @@ class _InternationalPhoneFieldState extends State<_InternationalPhoneField> {
     // browser fallback into an incorrect +1 default. The picker remains
     // available for users whose calling code differs from their device region.
     _country = Country.tryParse(region ?? 'FI') ?? Country.parse('FI');
+    widget.controller.addListener(_hydrateFromCanonical);
+    _hydrateFromCanonical();
     _sync();
   }
 
   @override
   void dispose() {
+    widget.controller.removeListener(_hydrateFromCanonical);
     _national.dispose();
     super.dispose();
+  }
+
+  void _hydrateFromCanonical() {
+    if (_writingCanonical || _national.text.isNotEmpty) return;
+    final canonical = widget.controller.text.trim();
+    if (!canonical.startsWith('+')) return;
+    final countries =
+        CountryService()
+            .getAll()
+            .where((item) => canonical.startsWith('+${item.phoneCode}'))
+            .toList()
+          ..sort((a, b) => b.phoneCode.length.compareTo(a.phoneCode.length));
+    if (countries.isEmpty) return;
+    final selected = countries.first;
+    final national = canonical.substring(selected.phoneCode.length + 1);
+    if (mounted) {
+      setState(() => _country = selected);
+      _national.text = national;
+    }
   }
 
   void _sync() {
     final number = _national.text
         .replaceAll(RegExp(r'\D'), '')
         .replaceFirst(RegExp(r'^0+'), '');
+    _writingCanonical = true;
     widget.controller.text = '+${_country.phoneCode}$number';
+    _writingCanonical = false;
   }
 
   void _chooseCountry() {
