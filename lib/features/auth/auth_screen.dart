@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:country_picker/country_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -9,6 +11,7 @@ import 'auth_service.dart';
 import 'backend_service.dart';
 import 'location_sheet.dart';
 import 'onboarding_progress_store.dart';
+import 'onboarding_draft_store.dart';
 
 const _green = Color(0xFF2F6B45);
 const _deepGreen = Color(0xFF184D31);
@@ -51,6 +54,7 @@ class _AuthScreenState extends State<AuthScreen>
   final _authService = AuthService();
   final _backend = BackendService();
   final _progressStore = OnboardingProgressStore();
+  final _draftStore = OnboardingDraftStore();
   late final AnimationController _skyController;
   int _page = 0;
   bool _isConsumer = true;
@@ -62,6 +66,7 @@ class _AuthScreenState extends State<AuthScreen>
   Uint8List? _pickedPhotoBytes;
   ConfirmedLocation? _confirmedLocation;
   String? _businessType;
+  Timer? _draftTimer;
 
   _AccountType get _effectiveType => _sellerType ?? _AccountType.consumer;
   int get _reviewPage => _sellerType == _AccountType.business ? 4 : 3;
@@ -73,7 +78,99 @@ class _AuthScreenState extends State<AuthScreen>
       vsync: this,
       duration: const Duration(seconds: 18),
     )..repeat(reverse: true);
+    for (final controller in _draftControllers) {
+      controller.addListener(_scheduleDraftSave);
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) => _restoreSession());
+  }
+
+  List<TextEditingController> get _draftControllers => [
+    _fullNameController,
+    _dateOfBirthController,
+    _displayNameController,
+    _phoneController,
+    _introController,
+    _businessNameController,
+    _farmNameController,
+    _businessIdController,
+    _vatController,
+    _businessAddressController,
+    _businessCityController,
+    _businessPostalController,
+  ];
+
+  void _scheduleDraftSave() {
+    _draftTimer?.cancel();
+    _draftTimer = Timer(const Duration(milliseconds: 450), _saveLocalDraft);
+  }
+
+  Future<void> _saveLocalDraft() async {
+    final uid = _authService.currentUser?.uid;
+    if (uid == null) return;
+    final location = _confirmedLocation;
+    await _draftStore.save(uid, {
+      'fullName': _fullNameController.text,
+      'dateOfBirth': _dateOfBirthController.text,
+      'displayName': _displayNameController.text,
+      'phone': _phoneController.text,
+      'intro': _introController.text,
+      'businessName': _businessNameController.text,
+      'farmName': _farmNameController.text,
+      'businessId': _businessIdController.text,
+      'vatNumber': _vatController.text,
+      'businessAddress': _businessAddressController.text,
+      'businessCity': _businessCityController.text,
+      'businessPostalCode': _businessPostalController.text,
+      'businessType': _businessType,
+      'consumer': _isConsumer,
+      'sellerType': _sellerType?.name,
+      if (location != null) 'location': location.toJson(),
+    });
+  }
+
+  Future<void> _restoreLocalDraft(String uid) async {
+    final draft = await _draftStore.load(uid);
+    if (draft == null || !mounted) return;
+    void restore(TextEditingController controller, String key) {
+      final value = draft[key] as String?;
+      if (controller.text.isEmpty && value?.isNotEmpty == true) {
+        controller.text = value!;
+      }
+    }
+
+    restore(_fullNameController, 'fullName');
+    restore(_dateOfBirthController, 'dateOfBirth');
+    restore(_displayNameController, 'displayName');
+    restore(_phoneController, 'phone');
+    restore(_introController, 'intro');
+    restore(_businessNameController, 'businessName');
+    restore(_farmNameController, 'farmName');
+    restore(_businessIdController, 'businessId');
+    restore(_vatController, 'vatNumber');
+    restore(_businessAddressController, 'businessAddress');
+    restore(_businessCityController, 'businessCity');
+    restore(_businessPostalController, 'businessPostalCode');
+    final seller = draft['sellerType'] as String?;
+    final location = draft['location'] as Map<String, dynamic>?;
+    setState(() {
+      _isConsumer = draft['consumer'] as bool? ?? _isConsumer;
+      _sellerType = switch (seller) {
+        'producer' => _AccountType.producer,
+        'business' => _AccountType.business,
+        _ => _sellerType,
+      };
+      _businessType = draft['businessType'] as String? ?? _businessType;
+      if (location != null) {
+        _confirmedLocation = ConfirmedLocation(
+          addressLine: location['addressLine'] as String? ?? '',
+          city: location['city'] as String? ?? '',
+          postalCode: location['postalCode'] as String? ?? '',
+          country: location['country'] as String? ?? '',
+          latitude: (location['latitude'] as num?)?.toDouble() ?? 0,
+          longitude: (location['longitude'] as num?)?.toDouble() ?? 0,
+        );
+      }
+    });
   }
 
   Future<void> _restoreSession() async {
@@ -86,6 +183,7 @@ class _AuthScreenState extends State<AuthScreen>
     }
     if (user == null || !mounted) return;
     _prefillFromUser(user);
+    await _restoreLocalDraft(user.uid);
     final usesPassword = user.providerData.any(
       (provider) => provider.providerId == 'password',
     );
@@ -105,6 +203,7 @@ class _AuthScreenState extends State<AuthScreen>
 
   @override
   void dispose() {
+    _draftTimer?.cancel();
     _skyController.dispose();
     _controller.dispose();
     _emailController.dispose();
@@ -134,6 +233,9 @@ class _AuthScreenState extends State<AuthScreen>
       final credential = await action();
       if (!mounted) return;
       _prefillFromUser(credential.user);
+      if (credential.user != null) {
+        await _restoreLocalDraft(credential.user!.uid);
+      }
       final usesPassword =
           credential.user?.providerData.any(
             (provider) => provider.providerId == 'password',
@@ -418,6 +520,8 @@ class _AuthScreenState extends State<AuthScreen>
         sellerProfile: seller,
       );
       await _progressStore.markComplete(user.uid);
+      _draftTimer?.cancel();
+      await _draftStore.clear(user.uid);
       if (mounted) _goTo(6);
     } catch (error) {
       if (mounted) _showAuthError(_serverMessage(error));
@@ -529,6 +633,7 @@ class _AuthScreenState extends State<AuthScreen>
     );
     if (location == null || !mounted) return;
     _confirmedLocation = location;
+    _scheduleDraftSave();
     _businessAddressController.text = location.addressLine;
     _businessCityController.text = location.city;
     _businessPostalController.text = location.postalCode;
@@ -629,9 +734,16 @@ class _AuthScreenState extends State<AuthScreen>
                     constraints: const BoxConstraints(maxWidth: 500),
                     margin: const EdgeInsets.fromLTRB(8, 0, 8, 8),
                     decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: _line),
+                      color: const Color(0xFFFEFFFC),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: Colors.white, width: 1.5),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x160E3522),
+                          blurRadius: 24,
+                          offset: Offset(0, 10),
+                        ),
+                      ],
                     ),
                     child: Column(
                       children: [
@@ -678,6 +790,7 @@ class _AuthScreenState extends State<AuthScreen>
                                         return;
                                       }
                                       _isConsumer = !_isConsumer;
+                                      _scheduleDraftSave();
                                     }),
                                 onSeller:
                                     (value) => setState(() {
@@ -686,6 +799,7 @@ class _AuthScreenState extends State<AuthScreen>
                                       if (_sellerType == null) {
                                         _isConsumer = true;
                                       }
+                                      _scheduleDraftSave();
                                     }),
                                 onContinue: _continueFromRole,
                               ),
@@ -714,13 +828,26 @@ class _AuthScreenState extends State<AuthScreen>
                                 postalController: _businessPostalController,
                                 businessType: _businessType,
                                 onBusinessType:
-                                    (value) =>
-                                        setState(() => _businessType = value),
+                                    (value) => setState(() {
+                                      _businessType = value;
+                                      _scheduleDraftSave();
+                                    }),
                                 onContinue: _continueFromBusiness,
                               ),
                               _ReviewPage(
                                 type: _effectiveType,
                                 consumer: _isConsumer,
+                                fullName: _fullNameController.text.trim(),
+                                phone: _phoneController.text.trim(),
+                                publicName: _displayNameController.text.trim(),
+                                businessName:
+                                    _businessNameController.text.trim(),
+                                location: _confirmedLocation,
+                                onEditProfile: () => _goTo(3),
+                                onEditBusiness:
+                                    _effectiveType == _AccountType.business
+                                        ? () => _goTo(4)
+                                        : null,
                                 onFinish: _finishOnboarding,
                                 loading: _authBusy,
                               ),
@@ -867,22 +994,49 @@ class _Progress extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-    child: Row(
-      children: List.generate(
-        4,
-        (index) => Expanded(
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 220),
-            height: 4,
-            margin: EdgeInsets.only(right: index == 3 ? 0 : 6),
-            decoration: BoxDecoration(
-              color: index < current ? _green : _line,
-              borderRadius: BorderRadius.circular(999),
+    padding: const EdgeInsets.fromLTRB(20, 15, 20, 0),
+    child: Column(
+      children: [
+        Row(
+          children: [
+            Text(
+              'YOUR SETUP',
+              style: TextStyle(
+                color: _green.withValues(alpha: .9),
+                fontSize: 10,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1.1,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              '$current of 4',
+              style: const TextStyle(
+                color: _muted,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: List.generate(
+            4,
+            (index) => Expanded(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 260),
+                height: 5,
+                margin: EdgeInsets.only(right: index == 3 ? 0 : 6),
+                decoration: BoxDecoration(
+                  color: index < current ? _green : _line,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
             ),
           ),
         ),
-      ),
+      ],
     ),
   );
 }
@@ -902,18 +1056,36 @@ class _WelcomePage extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        const Center(child: _Eyebrow('WELCOME TO FRSH NEARBY')),
         const Text(
           'Fresh food near you',
           textAlign: TextAlign.center,
-          style: _title,
+          style: TextStyle(
+            color: _ink,
+            fontSize: 28,
+            height: 1.1,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -.5,
+          ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 9),
         const Text(
-          'Sign in or create your account in a few taps.',
+          'One account for discovering, making and selling local food.',
           textAlign: TextAlign.center,
-          style: TextStyle(color: _muted, fontSize: 15),
+          style: TextStyle(color: _muted, fontSize: 14, height: 1.4),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 18),
+        const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _TrustPill(icon: Icons.near_me_outlined, text: 'Nearby'),
+            SizedBox(width: 7),
+            _TrustPill(icon: Icons.verified_outlined, text: 'Trusted'),
+            SizedBox(width: 7),
+            _TrustPill(icon: Icons.eco_outlined, text: 'Local'),
+          ],
+        ),
+        const SizedBox(height: 22),
         _ProviderButton(
           mark: 'G',
           label: 'Continue with Google',
@@ -938,11 +1110,53 @@ class _WelcomePage extends StatelessWidget {
           label: const Text('Continue with email'),
           style: _outlineStyle,
         ),
-        const SizedBox(height: 14),
-        const Text(
-          'One entry point for sign in and registration — we’ll recognise existing accounts automatically.',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: _muted, fontSize: 12, height: 1.35),
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.all(13),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF3F7EE),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: const Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.lock_outline_rounded, color: _green, size: 18),
+              SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  'Secure sign-in. Existing accounts return to their saved setup automatically.',
+                  style: TextStyle(color: _muted, fontSize: 11.5, height: 1.35),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _TrustPill extends StatelessWidget {
+  const _TrustPill({required this.icon, required this.text});
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+    decoration: BoxDecoration(
+      color: const Color(0xFFF7F9F3),
+      borderRadius: BorderRadius.circular(99),
+      border: Border.all(color: _line),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: _green),
+        const SizedBox(width: 4),
+        Text(
+          text,
+          style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800),
         ),
       ],
     ),
@@ -1457,11 +1671,25 @@ class _ReviewPage extends StatelessWidget {
   const _ReviewPage({
     required this.type,
     required this.consumer,
+    required this.fullName,
+    required this.phone,
+    required this.publicName,
+    required this.businessName,
+    required this.location,
+    required this.onEditProfile,
+    required this.onEditBusiness,
     required this.onFinish,
     required this.loading,
   });
   final _AccountType type;
   final bool consumer;
+  final String fullName;
+  final String phone;
+  final String publicName;
+  final String businessName;
+  final ConfirmedLocation? location;
+  final VoidCallback onEditProfile;
+  final VoidCallback? onEditBusiness;
   final VoidCallback onFinish;
   final bool loading;
 
@@ -1484,7 +1712,7 @@ class _ReviewPage extends StatelessWidget {
           const Text('Everything looks fresh', style: _title),
           const SizedBox(height: 6),
           const Text(
-            'Review your setup before creating your account.',
+            'Confirm what we saved. You can edit anything before continuing.',
             style: TextStyle(color: _muted),
           ),
           const SizedBox(height: 22),
@@ -1494,12 +1722,36 @@ class _ReviewPage extends StatelessWidget {
             value: title,
           ),
           const SizedBox(height: 10),
-          const _SummaryTile(
+          _SummaryTile(
             icon: Icons.badge_outlined,
-            title: 'Profile details',
-            value: 'Ready to publish',
+            title: fullName,
+            value: phone,
+            onEdit: onEditProfile,
           ),
           if (type != _AccountType.consumer) ...[
+            const SizedBox(height: 10),
+            _SummaryTile(
+              icon:
+                  type == _AccountType.business
+                      ? Icons.storefront_outlined
+                      : Icons.spa_outlined,
+              title: 'Public identity',
+              value: type == _AccountType.business ? businessName : publicName,
+              onEdit: onEditBusiness ?? onEditProfile,
+            ),
+            if (location != null) ...[
+              const SizedBox(height: 10),
+              _SummaryTile(
+                icon: Icons.location_on_outlined,
+                title: 'Registered location',
+                value: [
+                  location!.postalCode,
+                  location!.city,
+                  location!.country,
+                ].where((value) => value.isNotEmpty).join(', '),
+                onEdit: onEditProfile,
+              ),
+            ],
             const SizedBox(height: 10),
             const _SummaryTile(
               icon: Icons.verified_user_outlined,
@@ -1928,10 +2180,12 @@ class _SummaryTile extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.value,
+    this.onEdit,
   });
   final IconData icon;
   final String title;
   final String value;
+  final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -1961,7 +2215,10 @@ class _SummaryTile extends StatelessWidget {
             ],
           ),
         ),
-        const Icon(Icons.check_circle_rounded, color: _green, size: 20),
+        if (onEdit != null)
+          TextButton(onPressed: onEdit, child: const Text('Edit'))
+        else
+          const Icon(Icons.check_circle_rounded, color: _green, size: 20),
       ],
     ),
   );
