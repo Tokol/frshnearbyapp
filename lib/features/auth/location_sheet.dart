@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 
@@ -61,7 +62,9 @@ class _LocationSheetState extends State<LocationSheet> {
       );
       _lat = position.latitude;
       _lng = position.longitude;
-      if (!kIsWeb) {
+      if (kIsWeb) {
+        await _reverseGeocodeWeb();
+      } else {
         final places = await placemarkFromCoordinates(_lat!, _lng!);
         if (places.isNotEmpty) {
           final p = places.first;
@@ -85,6 +88,47 @@ class _LocationSheetState extends State<LocationSheet> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _reverseGeocodeWeb() async {
+    const endpoint = String.fromEnvironment(
+      'FRSH_REVERSE_GEOCODE_URL',
+      defaultValue: 'https://nominatim.openstreetmap.org/reverse',
+    );
+    final response = await Dio().get<Map<String, dynamic>>(
+      endpoint,
+      queryParameters: {
+        'format': 'jsonv2',
+        'lat': _lat,
+        'lon': _lng,
+        'zoom': 18,
+        'addressdetails': 1,
+        'layer': 'address',
+      },
+      options: Options(
+        headers: {'Accept': 'application/json'},
+        receiveTimeout: const Duration(seconds: 12),
+      ),
+    );
+    final address = response.data?['address'] as Map<String, dynamic>?;
+    if (address == null) return;
+    final house = address['house_number'] as String?;
+    final road =
+        address['road'] as String? ??
+        address['pedestrian'] as String? ??
+        address['residential'] as String?;
+    _address.text = [
+      house,
+      road,
+    ].where((value) => value?.isNotEmpty == true).join(' ');
+    _city.text =
+        address['city'] as String? ??
+        address['town'] as String? ??
+        address['village'] as String? ??
+        address['municipality'] as String? ??
+        '';
+    _postal.text = address['postcode'] as String? ?? '';
+    _country.text = address['country'] as String? ?? '';
   }
 
   void _confirm() {
@@ -166,6 +210,13 @@ class _LocationSheetState extends State<LocationSheet> {
                 ),
                 validator: _required,
               ),
+              if (kIsWeb) ...[
+                const SizedBox(height: 8),
+                const Text(
+                  'Address lookup © OpenStreetMap contributors. Please confirm the street before saving.',
+                  style: TextStyle(fontSize: 10, color: Color(0xFF647267)),
+                ),
+              ],
               const SizedBox(height: 10),
               Row(
                 children: [
