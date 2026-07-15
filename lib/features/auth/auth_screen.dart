@@ -636,9 +636,17 @@ class _AuthScreenState extends State<AuthScreen>
     if (!(_detailsKey.currentState?.validate() ?? false)) return;
     setState(() => _authBusy = true);
     try {
+      final phone = _phoneController.text.trim();
+      final available = await _backend.isPhoneNumberAvailable(phone);
+      if (!available) {
+        _showAuthError(
+          'This phone number is already registered. Sign in to the existing account or use another number.',
+        );
+        return;
+      }
       await _backend.savePersonalProfile(
         displayName: _fullNameController.text.trim(),
-        phone: _phoneController.text.trim(),
+        phone: phone,
         dateOfBirth: _isoDate(_dateOfBirthController.text),
         photoUrl: _socialPhotoUrl,
       );

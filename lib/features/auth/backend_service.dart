@@ -192,6 +192,14 @@ class BackendService {
     },
   );
 
+  Future<bool> isPhoneNumberAvailable(String phone) async {
+    final data = await _gql(
+      'query(\$phone: String!) { phoneNumberAvailable(phone: \$phone) }',
+      {'phone': phone},
+    );
+    return data['phoneNumberAvailable'] as bool? ?? false;
+  }
+
   Future<void> saveProducerProfile(Map<String, dynamic> input) => _gql(
     'mutation(\$input: ProducerProfileInput!) { saveProducerProfile(input: \$input) { id } }',
     {'input': input},
