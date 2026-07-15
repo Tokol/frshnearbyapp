@@ -168,8 +168,9 @@ class _LocationSheetState extends State<LocationSheet> {
           final p = places.first;
           _address.text = [
             p.street,
+            if ((p.street ?? '').isEmpty) p.name,
             p.subLocality,
-          ].where((v) => v != null && v.isNotEmpty).join(', ');
+          ].where((v) => v != null && v.trim().isNotEmpty).join(', ');
           _city.text = p.locality ?? p.administrativeArea ?? '';
           _postal.text = p.postalCode ?? '';
           _country.text = p.country ?? '';
@@ -216,10 +217,12 @@ class _LocationSheetState extends State<LocationSheet> {
         address['road'] as String? ??
         address['pedestrian'] as String? ??
         address['residential'] as String?;
+    // Keep the familiar European format (street first, number second). Every
+    // populated value remains editable before it is confirmed.
     _address.text = [
-      house,
       road,
-    ].where((value) => value?.isNotEmpty == true).join(' ');
+      house,
+    ].where((value) => value?.trim().isNotEmpty == true).join(' ');
     _city.text =
         address['city'] as String? ??
         address['town'] as String? ??
@@ -228,6 +231,11 @@ class _LocationSheetState extends State<LocationSheet> {
         '';
     _postal.text = address['postcode'] as String? ?? '';
     _country.text = address['country'] as String? ?? '';
+    if (_address.text.trim().isEmpty) {
+      throw StateError(
+        'We found your position but not its street address. Enter it manually.',
+      );
+    }
     _detectedAddressSignature = _addressSignature;
   }
 
