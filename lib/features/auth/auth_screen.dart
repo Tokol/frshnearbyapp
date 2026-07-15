@@ -66,6 +66,7 @@ class _AuthScreenState extends State<AuthScreen>
   Uint8List? _pickedPhotoBytes;
   ConfirmedLocation? _confirmedLocation;
   String? _businessType;
+  String _verificationStatus = 'NOT_REQUIRED';
   Timer? _draftTimer;
 
   _AccountType get _effectiveType => _sellerType ?? _AccountType.consumer;
@@ -321,6 +322,7 @@ class _AuthScreenState extends State<AuthScreen>
       }
     }
     _socialPhotoUrl = profile.photoUrl ?? _socialPhotoUrl;
+    _verificationStatus = profile.verificationStatus;
     if (profile.roles.contains('BUSINESS')) {
       _sellerType = _AccountType.business;
     } else if (profile.roles.contains('SIDE_HUSTLER')) {
@@ -365,7 +367,7 @@ class _AuthScreenState extends State<AuthScreen>
   int _resumePage(BackendUser profile) {
     if (profile.onboardingStep == 'COMPLETE' ||
         profile.onboardingStep == 'SUBMITTED_FOR_REVIEW') {
-      return 6;
+      return 8;
     }
     if (profile.onboardingStep == 'BUSINESS_DETAILS_REQUIRED' &&
         profile.phone != null) {
@@ -548,6 +550,30 @@ class _AuthScreenState extends State<AuthScreen>
     } on FirebaseAuthException catch (error) {
       if (mounted) _showAuthError(_authMessage(error));
     }
+  }
+
+  Future<void> _submitSellerVerification() async {
+    if (_sellerType == null || _authBusy) return;
+    setState(() => _authBusy = true);
+    try {
+      await _backend.submitForVerification();
+      if (!mounted) return;
+      setState(() => _verificationStatus = 'SUBMITTED');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Your verification request was sent for review.'),
+        ),
+      );
+    } catch (error) {
+      if (mounted) _showAuthError(_serverMessage(error));
+    } finally {
+      if (mounted) setState(() => _authBusy = false);
+    }
+  }
+
+  Future<void> _signOutToWelcome() async {
+    await _authService.signOut();
+    if (mounted) _goTo(0);
   }
 
   void _showAuthError(String message) {
@@ -850,7 +876,7 @@ class _AuthScreenState extends State<AuthScreen>
                               ),
                               _CompletePage(
                                 type: _effectiveType,
-                                onDone: () => _goTo(0),
+                                onDone: () => _goTo(8),
                               ),
                               _EmailVerificationPage(
                                 email: _emailController.text.trim(),
@@ -858,6 +884,27 @@ class _AuthScreenState extends State<AuthScreen>
                                 onCheck: _checkVerification,
                                 onResend: _resendVerification,
                                 onChangeEmail: _changeVerificationEmail,
+                              ),
+                              _ProfilePage(
+                                type: _effectiveType,
+                                consumer: _isConsumer,
+                                fullName: _fullNameController.text.trim(),
+                                email: _emailController.text.trim(),
+                                phone: _phoneController.text.trim(),
+                                photoUrl: _socialPhotoUrl,
+                                publicName: _displayNameController.text.trim(),
+                                businessName:
+                                    _businessNameController.text.trim(),
+                                location: _confirmedLocation,
+                                verificationStatus: _verificationStatus,
+                                busy: _authBusy,
+                                onEditProfile: () => _goTo(3),
+                                onEditBusiness:
+                                    _sellerType == _AccountType.business
+                                        ? () => _goTo(4)
+                                        : null,
+                                onVerify: _submitSellerVerification,
+                                onSignOut: _signOutToWelcome,
                               ),
                             ],
                           ),
@@ -1791,6 +1838,260 @@ class _CompletePage extends StatelessWidget {
         ),
         const SizedBox(height: 28),
         _PrimaryButton(label: 'Explore FRSH', onPressed: onDone),
+      ],
+    ),
+  );
+}
+
+class _ProfilePage extends StatelessWidget {
+  const _ProfilePage({
+    required this.type,
+    required this.consumer,
+    required this.fullName,
+    required this.email,
+    required this.phone,
+    required this.photoUrl,
+    required this.publicName,
+    required this.businessName,
+    required this.location,
+    required this.verificationStatus,
+    required this.busy,
+    required this.onEditProfile,
+    required this.onEditBusiness,
+    required this.onVerify,
+    required this.onSignOut,
+  });
+  final _AccountType type;
+  final bool consumer;
+  final String fullName;
+  final String email;
+  final String phone;
+  final String? photoUrl;
+  final String publicName;
+  final String businessName;
+  final ConfirmedLocation? location;
+  final String verificationStatus;
+  final bool busy;
+  final VoidCallback onEditProfile;
+  final VoidCallback? onEditBusiness;
+  final VoidCallback onVerify;
+  final VoidCallback onSignOut;
+
+  String get _accountLabel {
+    final seller = switch (type) {
+      _AccountType.consumer => 'Consumer',
+      _AccountType.producer => 'Side-hustle producer',
+      _AccountType.business => 'Registered business',
+    };
+    return consumer && type != _AccountType.consumer
+        ? 'Consumer + $seller'
+        : seller;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isSeller = type != _AccountType.consumer;
+    final canVerify = const {
+      'DRAFT',
+      'NEEDS_CHANGES',
+      'REJECTED',
+    }.contains(verificationStatus);
+    return _ScrollPage(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(
+                radius: 34,
+                backgroundColor: const Color(0xFFDCEBDD),
+                backgroundImage:
+                    photoUrl?.isNotEmpty == true
+                        ? NetworkImage(photoUrl!)
+                        : null,
+                child:
+                    photoUrl?.isNotEmpty == true
+                        ? null
+                        : Text(
+                          fullName.isEmpty ? 'F' : fullName[0].toUpperCase(),
+                          style: const TextStyle(
+                            color: _green,
+                            fontSize: 24,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const _Eyebrow('YOUR PROFILE'),
+                    Text(
+                      fullName.isEmpty ? 'FRSH member' : fullName,
+                      style: _title,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(_accountLabel, style: const TextStyle(color: _muted)),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'Edit profile',
+                onPressed: onEditProfile,
+                icon: const Icon(Icons.edit_outlined),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          _ProfileSection(
+            icon: Icons.person_outline_rounded,
+            title: 'Account details',
+            lines: [email, phone].where((value) => value.isNotEmpty).toList(),
+            onEdit: onEditProfile,
+          ),
+          if (isSeller) ...[
+            const SizedBox(height: 12),
+            _ProfileSection(
+              icon:
+                  type == _AccountType.business
+                      ? Icons.storefront_outlined
+                      : Icons.spa_outlined,
+              title:
+                  type == _AccountType.business
+                      ? (businessName.isEmpty
+                          ? 'Business profile'
+                          : businessName)
+                      : (publicName.isEmpty ? 'Seller profile' : publicName),
+              lines: [
+                if (location != null) location!.formattedAddress,
+                if (location != null)
+                  [
+                    location!.postalCode,
+                    location!.city,
+                    location!.country,
+                  ].where((value) => value.isNotEmpty).join(', '),
+              ],
+              onEdit: onEditBusiness ?? onEditProfile,
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color:
+                    verificationStatus == 'VERIFIED'
+                        ? const Color(0xFFE5F3DF)
+                        : const Color(0xFFFFF5D9),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        verificationStatus == 'VERIFIED'
+                            ? Icons.verified_rounded
+                            : Icons.verified_user_outlined,
+                        color: _deepGreen,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Seller verification',
+                              style: TextStyle(fontWeight: FontWeight.w900),
+                            ),
+                            Text(
+                              verificationStatus.replaceAll('_', ' '),
+                              style: const TextStyle(
+                                color: _muted,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (canVerify) ...[
+                    const SizedBox(height: 13),
+                    _PrimaryButton(
+                      label: 'Apply for verification',
+                      onPressed: onVerify,
+                      loading: busy,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 16),
+          OutlinedButton.icon(
+            onPressed: onSignOut,
+            icon: const Icon(Icons.logout_rounded),
+            label: const Text('Sign out'),
+            style: _outlineStyle,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileSection extends StatelessWidget {
+  const _ProfileSection({
+    required this.icon,
+    required this.title,
+    required this.lines,
+    required this.onEdit,
+  });
+  final IconData icon;
+  final String title;
+  final List<String> lines;
+  final VoidCallback onEdit;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(15),
+    decoration: BoxDecoration(
+      color: const Color(0xFFF7F9F3),
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: _line),
+    ),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: const Color(0xFFDCEBDD),
+            borderRadius: BorderRadius.circular(13),
+          ),
+          child: Icon(icon, color: _green),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
+              for (final line in lines)
+                Padding(
+                  padding: const EdgeInsets.only(top: 3),
+                  child: Text(
+                    line,
+                    style: const TextStyle(color: _muted, fontSize: 12),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        TextButton(onPressed: onEdit, child: const Text('Edit')),
       ],
     ),
   );

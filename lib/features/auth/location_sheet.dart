@@ -409,7 +409,7 @@ class _LocationSheetState extends State<LocationSheet> {
                 controller: _address,
                 decoration: const InputDecoration(
                   labelText: 'Street address and number *',
-                  hintText: 'For example: Konejakatu 9',
+                  hintText: 'For example: Market Street 12',
                 ),
                 validator: _required,
               ),
@@ -418,7 +418,7 @@ class _LocationSheetState extends State<LocationSheet> {
                 controller: _addressUnit,
                 decoration: const InputDecoration(
                   labelText: 'Building, block, unit or floor',
-                  hintText: 'For example: Building Q4, unit A 9',
+                  hintText: 'For example: Building B, unit 4',
                   prefixIcon: Icon(Icons.apartment_outlined),
                 ),
               ),

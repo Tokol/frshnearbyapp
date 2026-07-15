@@ -202,6 +202,9 @@ class BackendService {
     {'input': input},
   );
 
+  Future<void> submitForVerification() =>
+      _gql('mutation { submitForVerification { id } }');
+
   Future<void> confirmLocation(ConfirmedLocation location) => _gql(
     'mutation(\$input: ConfirmLocationInput!) { confirmLocation(input: \$input) { id } }',
     {'input': location.toJson()},
