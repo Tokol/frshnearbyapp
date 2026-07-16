@@ -75,6 +75,8 @@ class _AuthScreenState extends State<AuthScreen>
   Timer? _verificationTimer;
   DateTime? _verificationExpiresAt;
   DateTime? _verificationResendAvailableAt;
+  final List<VerificationDocumentUpload> _verificationDocuments = [];
+  bool _verificationConfirmed = false;
 
   _AccountType get _effectiveType => _sellerType ?? _AccountType.consumer;
   int get _reviewPage => _sellerType == _AccountType.business ? 4 : 3;
@@ -634,13 +636,32 @@ class _AuthScreenState extends State<AuthScreen>
 
   Future<void> _submitSellerVerification() async {
     if (_sellerType == null || _authBusy) return;
+    final requiredKind =
+        _sellerType == _AccountType.business
+            ? 'BUSINESS_REGISTRATION'
+            : 'IDENTITY';
+    if (!_verificationDocuments.any(
+      (document) => document.kind == requiredKind,
+    )) {
+      _showAuthError(
+        _sellerType == _AccountType.business
+            ? 'Upload business registration proof before submitting.'
+            : 'Upload proof of identity before submitting.',
+      );
+      return;
+    }
+    if (!_verificationConfirmed) {
+      _showAuthError('Confirm your details before submitting.');
+      return;
+    }
     setState(() => _authBusy = true);
     try {
-      await _backend.submitForVerification();
+      await _backend.submitForVerification(documents: _verificationDocuments);
       if (!mounted) return;
       setState(() {
         _verificationStatus = 'SUBMITTED';
         _verificationMessage = null;
+        _verificationConfirmed = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -652,6 +673,43 @@ class _AuthScreenState extends State<AuthScreen>
     } finally {
       if (mounted) setState(() => _authBusy = false);
     }
+  }
+
+  Future<void> _addVerificationDocument(String kind) async {
+    final picked = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 86,
+      maxWidth: 1800,
+    );
+    if (picked == null) return;
+    final bytes = await picked.readAsBytes();
+    if (bytes.length > 8 * 1024 * 1024) {
+      _showAuthError('Each verification file must be 8 MB or smaller.');
+      return;
+    }
+    final document = VerificationDocumentUpload(
+      kind: kind,
+      originalName: picked.name,
+      mimeType: picked.mimeType ?? _mimeTypeForName(picked.name),
+      bytes: bytes,
+    );
+    setState(() {
+      _verificationDocuments.removeWhere((item) => item.kind == kind);
+      _verificationDocuments.add(document);
+    });
+  }
+
+  void _removeVerificationDocument(String kind) {
+    setState(() {
+      _verificationDocuments.removeWhere((document) => document.kind == kind);
+    });
+  }
+
+  String _mimeTypeForName(String name) {
+    final lower = name.toLowerCase();
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.webp')) return 'image/webp';
+    return 'image/jpeg';
   }
 
   Future<void> _signOutToWelcome() async {
@@ -996,12 +1054,24 @@ class _AuthScreenState extends State<AuthScreen>
                                 location: _confirmedLocation,
                                 verificationStatus: _verificationStatus,
                                 verificationMessage: _verificationMessage,
+                                verificationDocuments: _verificationDocuments,
+                                verificationConfirmed: _verificationConfirmed,
                                 busy: _authBusy,
                                 onEditProfile: () => _goTo(3),
                                 onEditBusiness:
                                     _sellerType == _AccountType.business
                                         ? () => _goTo(4)
                                         : null,
+                                onAddVerificationDocument:
+                                    _addVerificationDocument,
+                                onRemoveVerificationDocument:
+                                    _removeVerificationDocument,
+                                onVerificationConfirmed:
+                                    (value) => setState(
+                                      () =>
+                                          _verificationConfirmed =
+                                              value ?? false,
+                                    ),
                                 onVerify: _submitSellerVerification,
                                 onSignOut: _signOutToWelcome,
                               ),
@@ -1240,10 +1310,7 @@ class _WelcomePage extends StatelessWidget {
             Expanded(child: Divider(color: _line)),
             Padding(
               padding: EdgeInsets.symmetric(horizontal: 12),
-              child: Text(
-                'or',
-                style: TextStyle(color: _muted, fontSize: 13),
-              ),
+              child: Text('or', style: TextStyle(color: _muted, fontSize: 13)),
             ),
             Expanded(child: Divider(color: _line)),
           ],
@@ -1358,9 +1425,7 @@ class _EmailPage extends StatelessWidget {
               controller: confirmPasswordController,
               enabled: !loading,
               obscureText: hidePassword,
-              decoration: const InputDecoration(
-                labelText: 'Confirm password',
-              ),
+              decoration: const InputDecoration(labelText: 'Confirm password'),
               validator:
                   (value) =>
                       value == passwordController.text
@@ -2098,9 +2163,14 @@ class _ProfilePage extends StatelessWidget {
     required this.location,
     required this.verificationStatus,
     required this.verificationMessage,
+    required this.verificationDocuments,
+    required this.verificationConfirmed,
     required this.busy,
     required this.onEditProfile,
     required this.onEditBusiness,
+    required this.onAddVerificationDocument,
+    required this.onRemoveVerificationDocument,
+    required this.onVerificationConfirmed,
     required this.onVerify,
     required this.onSignOut,
   });
@@ -2115,9 +2185,14 @@ class _ProfilePage extends StatelessWidget {
   final ConfirmedLocation? location;
   final String verificationStatus;
   final String? verificationMessage;
+  final List<VerificationDocumentUpload> verificationDocuments;
+  final bool verificationConfirmed;
   final bool busy;
   final VoidCallback onEditProfile;
   final VoidCallback? onEditBusiness;
+  final ValueChanged<String> onAddVerificationDocument;
+  final ValueChanged<String> onRemoveVerificationDocument;
+  final ValueChanged<bool?> onVerificationConfirmed;
   final VoidCallback onVerify;
   final VoidCallback onSignOut;
 
@@ -2281,6 +2356,15 @@ class _ProfilePage extends StatelessWidget {
                   ],
                   if (canVerify) ...[
                     const SizedBox(height: 13),
+                    _VerificationDocumentsCard(
+                      type: type,
+                      documents: verificationDocuments,
+                      confirmed: verificationConfirmed,
+                      onAdd: onAddVerificationDocument,
+                      onRemove: onRemoveVerificationDocument,
+                      onConfirmed: onVerificationConfirmed,
+                    ),
+                    const SizedBox(height: 13),
                     _PrimaryButton(
                       label:
                           verificationStatus == 'NEEDS_CHANGES'
@@ -2357,6 +2441,176 @@ class _ProfileSection extends StatelessWidget {
           ),
         ),
         TextButton(onPressed: onEdit, child: const Text('Edit')),
+      ],
+    ),
+  );
+}
+
+class _VerificationDocumentsCard extends StatelessWidget {
+  const _VerificationDocumentsCard({
+    required this.type,
+    required this.documents,
+    required this.confirmed,
+    required this.onAdd,
+    required this.onRemove,
+    required this.onConfirmed,
+  });
+
+  final _AccountType type;
+  final List<VerificationDocumentUpload> documents;
+  final bool confirmed;
+  final ValueChanged<String> onAdd;
+  final ValueChanged<String> onRemove;
+  final ValueChanged<bool?> onConfirmed;
+
+  List<_VerificationDocumentRequirement> get _requirements {
+    if (type == _AccountType.business) {
+      return const [
+        _VerificationDocumentRequirement(
+          kind: 'BUSINESS_REGISTRATION',
+          label: 'Business registration',
+          required: true,
+        ),
+        _VerificationDocumentRequirement(
+          kind: 'VAT_REGISTRATION',
+          label: 'Tax or VAT document',
+        ),
+      ];
+    }
+    return const [
+      _VerificationDocumentRequirement(
+        kind: 'IDENTITY',
+        label: 'Proof of identity',
+        required: true,
+      ),
+      _VerificationDocumentRequirement(
+        kind: 'ADDRESS_PROOF',
+        label: 'Activity or location proof',
+      ),
+    ];
+  }
+
+  VerificationDocumentUpload? _documentFor(String kind) {
+    for (final document in documents) {
+      if (document.kind == kind) return document;
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(
+      color: Colors.white.withValues(alpha: 0.76),
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: _line),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text(
+          'Verification proof',
+          style: TextStyle(fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 5),
+        const Text(
+          'Review the details above, attach proof, then confirm they are correct.',
+          style: TextStyle(color: _muted, fontSize: 12, height: 1.35),
+        ),
+        const SizedBox(height: 12),
+        for (final requirement in _requirements) ...[
+          _VerificationDocumentRow(
+            requirement: requirement,
+            document: _documentFor(requirement.kind),
+            onAdd: () => onAdd(requirement.kind),
+            onRemove: () => onRemove(requirement.kind),
+          ),
+          const SizedBox(height: 8),
+        ],
+        CheckboxListTile(
+          contentPadding: EdgeInsets.zero,
+          controlAffinity: ListTileControlAffinity.leading,
+          value: confirmed,
+          onChanged: onConfirmed,
+          title: const Text(
+            'I confirm these details are accurate and I am responsible for the products I sell.',
+            style: TextStyle(fontSize: 12, height: 1.35),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _VerificationDocumentRequirement {
+  const _VerificationDocumentRequirement({
+    required this.kind,
+    required this.label,
+    this.required = false,
+  });
+
+  final String kind;
+  final String label;
+  final bool required;
+}
+
+class _VerificationDocumentRow extends StatelessWidget {
+  const _VerificationDocumentRow({
+    required this.requirement,
+    required this.document,
+    required this.onAdd,
+    required this.onRemove,
+  });
+
+  final _VerificationDocumentRequirement requirement;
+  final VerificationDocumentUpload? document;
+  final VoidCallback onAdd;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    decoration: BoxDecoration(
+      color: _cream,
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: _line),
+    ),
+    child: Row(
+      children: [
+        Icon(
+          document == null
+              ? Icons.upload_file_outlined
+              : Icons.check_circle_rounded,
+          color: _green,
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                requirement.required
+                    ? '${requirement.label} *'
+                    : requirement.label,
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              Text(
+                document?.originalName ?? 'Image upload',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: _muted, fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+        if (document == null)
+          TextButton(onPressed: onAdd, child: const Text('Add'))
+        else
+          IconButton(
+            tooltip: 'Remove',
+            onPressed: onRemove,
+            icon: const Icon(Icons.close_rounded),
+          ),
       ],
     ),
   );
@@ -2913,8 +3167,7 @@ class _PrimaryButtonState extends State<_PrimaryButton> {
             backgroundColor: _deepGreen,
             disabledBackgroundColor:
                 widget.loading ? _deepGreen : const Color(0xFFD8DCD2),
-            disabledForegroundColor:
-                widget.loading ? Colors.white70 : _muted,
+            disabledForegroundColor: widget.loading ? Colors.white70 : _muted,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
             ),

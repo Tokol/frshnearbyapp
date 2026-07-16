@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -77,6 +80,27 @@ class EmailSignupChallenge {
         expiresAt: DateTime.parse(json['expiresAt'] as String),
         resendAvailableAt: DateTime.parse(json['resendAvailableAt'] as String),
       );
+}
+
+class VerificationDocumentUpload {
+  const VerificationDocumentUpload({
+    required this.kind,
+    required this.originalName,
+    required this.mimeType,
+    required this.bytes,
+  });
+
+  final String kind;
+  final String originalName;
+  final String mimeType;
+  final Uint8List bytes;
+
+  Map<String, dynamic> toJson() => {
+    'kind': kind,
+    'originalName': originalName,
+    'mimeType': mimeType,
+    'base64Data': base64Encode(bytes),
+  };
 }
 
 class ConfirmedLocation {
@@ -291,8 +315,17 @@ class BackendService {
     {'input': input},
   );
 
-  Future<void> submitForVerification() =>
-      _gql('mutation { submitForVerification { id } }');
+  Future<void> submitForVerification({
+    required List<VerificationDocumentUpload> documents,
+  }) => _gql(
+    'mutation(\$input: SubmitVerificationInput!) { submitForVerification(input: \$input) { id } }',
+    {
+      'input': {
+        'confirmation': true,
+        'documents': documents.map((document) => document.toJson()).toList(),
+      },
+    },
+  );
 
   Future<void> confirmLocation(ConfirmedLocation location) => _gql(
     'mutation(\$input: ConfirmLocationInput!) { confirmLocation(input: \$input) { id } }',
