@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'auth_service.dart';
@@ -14,12 +15,13 @@ import 'onboarding_progress_store.dart';
 import 'onboarding_draft_store.dart';
 
 const _green = Color(0xFF2F6B45);
-const _deepGreen = Color(0xFF184D31);
-const _ink = Color(0xFF183326);
-const _muted = Color(0xFF647267);
-const _line = Color(0xFFE2E8DD);
-const _mist = Color(0xFFEFF4E9);
-const _gold = Color(0xFFE9CD7A);
+const _deepGreen = Color(0xFF1C4630);
+const _ink = Color(0xFF1B2A20);
+const _muted = Color(0xFF66735F);
+const _line = Color(0xFFE7E5DB);
+const _mist = Color(0xFFEEF2E7);
+const _cream = Color(0xFFFBFAF5);
+const _field = Color(0xFFF3F2EA);
 
 enum _AccountType { consumer, producer, business }
 
@@ -80,6 +82,7 @@ class _AuthScreenState extends State<AuthScreen>
   @override
   void initState() {
     super.initState();
+    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
     _skyController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 18),
@@ -823,36 +826,39 @@ class _AuthScreenState extends State<AuthScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF9FAF5),
+      backgroundColor: const Color(0xFF0F231A),
       body: Stack(
         children: [
-          Positioned.fill(
-            child: SvgPicture.asset(
-              'assets/images/auth_farm.svg',
-              fit: BoxFit.cover,
-              alignment: Alignment.topCenter,
-            ),
-          ),
-          Positioned.fill(child: _AnimatedFarmSky(animation: _skyController)),
+          Positioned.fill(child: _KenBurnsBackdrop(animation: _skyController)),
+          const Positioned.fill(child: _BackdropScrim()),
           SafeArea(
+            bottom: false,
             child: Column(
               children: [
                 _TopBar(page: _page, onBack: _goBack),
-                SizedBox(height: _page == 0 ? 104 : 72),
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 380),
+                  curve: Curves.easeOutCubic,
+                  height: _page == 0 ? 128.0 : 56.0,
+                ),
                 Expanded(
                   child: Container(
                     width: double.infinity,
-                    constraints: const BoxConstraints(maxWidth: 500),
-                    margin: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFEFFFC),
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: Colors.white, width: 1.5),
-                      boxShadow: const [
+                    constraints: const BoxConstraints(maxWidth: 520),
+                    padding: EdgeInsets.only(
+                      bottom: MediaQuery.of(context).padding.bottom,
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    decoration: const BoxDecoration(
+                      color: _cream,
+                      borderRadius: BorderRadius.vertical(
+                        top: Radius.circular(30),
+                      ),
+                      boxShadow: [
                         BoxShadow(
-                          color: Color(0x160E3522),
-                          blurRadius: 24,
-                          offset: Offset(0, 10),
+                          color: Color(0x40061209),
+                          blurRadius: 34,
+                          offset: Offset(0, -10),
                         ),
                       ],
                     ),
@@ -1022,78 +1028,45 @@ class _AuthScreenState extends State<AuthScreen>
   }
 }
 
-class _AnimatedFarmSky extends StatelessWidget {
-  const _AnimatedFarmSky({required this.animation});
+class _KenBurnsBackdrop extends StatelessWidget {
+  const _KenBurnsBackdrop({required this.animation});
   final Animation<double> animation;
 
   @override
   Widget build(BuildContext context) => IgnorePointer(
-    child: AnimatedBuilder(
-      animation: animation,
-      builder:
-          (context, _) => LayoutBuilder(
-            builder: (context, constraints) {
-              final travel = constraints.maxWidth + 110;
-              return Stack(
-                children: [
-                  Positioned(
-                    right: 40,
-                    top: 116 - (animation.value * 18),
-                    child: _SunGlow(pulse: animation.value),
-                  ),
-                  Positioned(
-                    left: -90 + (travel * animation.value),
-                    top: 112,
-                    child: const _Cloud(width: 72, opacity: .82),
-                  ),
-                  Positioned(
-                    right: -65 + (travel * animation.value),
-                    top: 174,
-                    child: const _Cloud(width: 48, opacity: .65),
-                  ),
-                ],
-              );
-            },
-          ),
-    ),
-  );
-}
-
-class _SunGlow extends StatelessWidget {
-  const _SunGlow({required this.pulse});
-  final double pulse;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    width: 54 + (pulse * 5),
-    height: 54 + (pulse * 5),
-    decoration: BoxDecoration(
-      shape: BoxShape.circle,
-      color: _gold,
-      boxShadow: [
-        BoxShadow(
-          color: _gold.withValues(alpha: .22 + (pulse * .12)),
-          blurRadius: 18 + (pulse * 14),
-          spreadRadius: 7 + (pulse * 5),
+    child: ClipRect(
+      child: AnimatedBuilder(
+        animation: animation,
+        builder:
+            (context, child) => Transform.scale(
+              scale: 1.04 + (animation.value * 0.05),
+              alignment: Alignment.topCenter,
+              child: child,
+            ),
+        child: Image.asset(
+          'assets/images/auth_backdrop.jpg',
+          fit: BoxFit.cover,
+          alignment: Alignment.topCenter,
         ),
-      ],
+      ),
     ),
   );
 }
 
-class _Cloud extends StatelessWidget {
-  const _Cloud({required this.width, required this.opacity});
-  final double width;
-  final double opacity;
+class _BackdropScrim extends StatelessWidget {
+  const _BackdropScrim();
 
   @override
-  Widget build(BuildContext context) => Opacity(
-    opacity: opacity,
-    child: Icon(
-      Icons.cloud_rounded,
-      size: width,
-      color: Colors.white,
-      shadows: const [Shadow(color: Color(0x11000000), blurRadius: 8)],
+  Widget build(BuildContext context) => const IgnorePointer(
+    child: DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0x59081710), Color(0x1A081710), Color(0x8C081710)],
+          stops: [0, .38, 1],
+        ),
+      ),
     ),
   );
 }
@@ -1105,21 +1078,59 @@ class _TopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+    padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
     child: Row(
       children: [
-        if (page > 0 && page < 6)
-          IconButton.filledTonal(
-            onPressed: onBack,
-            style: IconButton.styleFrom(backgroundColor: Colors.white),
-            icon: const Icon(Icons.arrow_back_rounded),
-          )
-        else
-          const SizedBox(width: 48),
+        SizedBox(
+          width: 44,
+          height: 44,
+          child:
+              (page > 0 && page < 6)
+                  ? IconButton(
+                    onPressed: onBack,
+                    style: IconButton.styleFrom(
+                      backgroundColor: const Color(0x26FFFFFF),
+                      foregroundColor: _cream,
+                      side: const BorderSide(color: Color(0x33FFFFFF)),
+                    ),
+                    icon: const Icon(Icons.arrow_back_rounded, size: 20),
+                  )
+                  : null,
+        ),
         const Spacer(),
-        Image.asset('assets/images/logo_transparent.png', width: 108),
+        const _Wordmark(),
         const Spacer(),
-        const SizedBox(width: 48),
+        const SizedBox(width: 44),
+      ],
+    ),
+  );
+}
+
+class _Wordmark extends StatelessWidget {
+  const _Wordmark();
+
+  @override
+  Widget build(BuildContext context) => Text.rich(
+    TextSpan(
+      children: [
+        TextSpan(
+          text: 'FRSH ',
+          style: GoogleFonts.fraunces(
+            color: _cream,
+            fontSize: 21,
+            fontWeight: FontWeight.w600,
+            letterSpacing: .6,
+          ),
+        ),
+        TextSpan(
+          text: 'nearby',
+          style: GoogleFonts.fraunces(
+            color: _cream.withValues(alpha: .82),
+            fontSize: 20,
+            fontWeight: FontWeight.w400,
+            fontStyle: FontStyle.italic,
+          ),
+        ),
       ],
     ),
   );
@@ -1131,18 +1142,18 @@ class _Progress extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(20, 15, 20, 0),
+    padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
     child: Column(
       children: [
         Row(
           children: [
-            Text(
+            const Text(
               'YOUR SETUP',
               style: TextStyle(
-                color: _green.withValues(alpha: .9),
+                color: Color(0xFF57705C),
                 fontSize: 10,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 1.1,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.8,
               ),
             ),
             const Spacer(),
@@ -1151,25 +1162,29 @@ class _Progress extends StatelessWidget {
               style: const TextStyle(
                 color: _muted,
                 fontSize: 11,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ],
         ),
-        const SizedBox(height: 8),
-        Row(
-          children: List.generate(
-            4,
-            (index) => Expanded(
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 260),
-                height: 5,
-                margin: EdgeInsets.only(right: index == 3 ? 0 : 6),
-                decoration: BoxDecoration(
-                  color: index < current ? _green : _line,
-                  borderRadius: BorderRadius.circular(999),
+        const SizedBox(height: 10),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(999),
+          child: SizedBox(
+            height: 3,
+            width: double.infinity,
+            child: Stack(
+              children: [
+                const Positioned.fill(child: ColoredBox(color: _line)),
+                AnimatedFractionallySizedBox(
+                  duration: const Duration(milliseconds: 420),
+                  curve: Curves.easeOutCubic,
+                  alignment: Alignment.centerLeft,
+                  widthFactor: current / 4,
+                  heightFactor: 1,
+                  child: const ColoredBox(color: _green),
                 ),
-              ),
+              ],
             ),
           ),
         ),
@@ -1193,50 +1208,53 @@ class _WelcomePage extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        const SizedBox(height: 6),
         const Center(child: _Eyebrow('WELCOME')),
-        const Text(
+        const SizedBox(height: 2),
+        Text(
           'Fresh food near you',
           textAlign: TextAlign.center,
-          style: TextStyle(
+          style: GoogleFonts.fraunces(
             color: _ink,
-            fontSize: 28,
-            height: 1.1,
-            fontWeight: FontWeight.w900,
+            fontSize: 32,
+            height: 1.08,
+            fontWeight: FontWeight.w600,
             letterSpacing: -.5,
           ),
         ),
-        const SizedBox(height: 9),
+        const SizedBox(height: 10),
         const Text(
           'One account for discovering, making and selling local food.',
           textAlign: TextAlign.center,
-          style: TextStyle(color: _muted, fontSize: 14, height: 1.4),
+          style: TextStyle(color: _muted, fontSize: 14.5, height: 1.45),
         ),
-        const SizedBox(height: 22),
+        const SizedBox(height: 26),
         _ProviderButton(
-          mark: 'G',
           label: 'Continue with Google',
           loading: loading,
           onPressed: onGoogle,
         ),
-        const SizedBox(height: 12),
-        Row(
+        const SizedBox(height: 14),
+        const Row(
           children: [
-            const Expanded(child: Divider(color: _line)),
+            Expanded(child: Divider(color: _line)),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Text('or', style: TextStyle(color: _muted)),
+              padding: EdgeInsets.symmetric(horizontal: 12),
+              child: Text(
+                'or',
+                style: TextStyle(color: _muted, fontSize: 13),
+              ),
             ),
-            const Expanded(child: Divider(color: _line)),
+            Expanded(child: Divider(color: _line)),
           ],
         ),
-        const SizedBox(height: 12),
-        OutlinedButton.icon(
-          onPressed: loading ? null : onEmail,
-          icon: const Icon(Icons.mail_outline_rounded),
-          label: const Text('Continue with email'),
-          style: _outlineStyle,
-        ),
         const SizedBox(height: 14),
+        OutlinedButton(
+          onPressed: loading ? null : onEmail,
+          style: _outlineStyle,
+          child: const Text('Continue with email'),
+        ),
+        const SizedBox(height: 16),
         const Text(
           'Secure sign-in • your saved setup resumes automatically',
           textAlign: TextAlign.center,
@@ -1305,10 +1323,7 @@ class _EmailPage extends StatelessWidget {
             controller: emailController,
             enabled: !loading,
             keyboardType: TextInputType.emailAddress,
-            decoration: const InputDecoration(
-              labelText: 'Email address',
-              prefixIcon: Icon(Icons.mail_outline_rounded),
-            ),
+            decoration: const InputDecoration(labelText: 'Email address'),
             validator:
                 (value) =>
                     value != null && value.contains('@')
@@ -1322,7 +1337,6 @@ class _EmailPage extends StatelessWidget {
             obscureText: hidePassword,
             decoration: InputDecoration(
               labelText: 'Password',
-              prefixIcon: const Icon(Icons.lock_outline_rounded),
               suffixIcon: IconButton(
                 onPressed: onTogglePassword,
                 icon: Icon(
@@ -1346,7 +1360,6 @@ class _EmailPage extends StatelessWidget {
               obscureText: hidePassword,
               decoration: const InputDecoration(
                 labelText: 'Confirm password',
-                prefixIcon: Icon(Icons.lock_reset_rounded),
               ),
               validator:
                   (value) =>
@@ -1395,7 +1408,7 @@ class _AccountTypePage extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const _Eyebrow('STEP 1 OF 4'),
-        const Text('How will you use FRSH?', style: _title),
+        Text('How will you use FRSH?', style: _title),
         const SizedBox(height: 6),
         const Text(
           'You can also be a consumer. Choose only one type of seller profile.',
@@ -1404,33 +1417,30 @@ class _AccountTypePage extends StatelessWidget {
         const SizedBox(height: 18),
         _TypeCard(
           selected: consumer,
-          icon: Icons.shopping_basket_outlined,
-          accent: const Color(0xFFDCEBDD),
+          image: 'assets/images/role_consumer.jpg',
           title: 'Consumer',
           subtitle: 'Discover fresh food and trusted makers nearby.',
           onTap: onConsumer,
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 12),
         _TypeCard(
           selected: sellerType == _AccountType.producer,
-          icon: Icons.spa_outlined,
-          accent: const Color(0xFFFFF2CC),
+          image: 'assets/images/role_producer.jpg',
           title: 'Side-hustle producer',
           subtitle: 'Sell small-batch, seasonal or homemade products.',
           badge: 'INDIVIDUAL',
           onTap: () => onSeller(_AccountType.producer),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 12),
         _TypeCard(
           selected: sellerType == _AccountType.business,
-          icon: Icons.storefront_outlined,
-          accent: const Color(0xFFDDE8F4),
+          image: 'assets/images/role_business.jpg',
           title: 'Registered business',
           subtitle: 'Build a verified storefront for your farm or company.',
           badge: 'BUSINESS',
           onTap: () => onSeller(_AccountType.business),
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 20),
         _PrimaryButton(label: 'Continue', onPressed: onContinue),
       ],
     ),
@@ -1481,23 +1491,25 @@ class _EmailVerificationPage extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        const SizedBox(height: 6),
         Center(
           child: Container(
-            width: 76,
-            height: 76,
-            decoration: const BoxDecoration(
+            width: 68,
+            height: 68,
+            decoration: BoxDecoration(
               color: _mist,
               shape: BoxShape.circle,
+              border: Border.all(color: const Color(0xFFDFE7D6)),
             ),
             child: const Icon(
               Icons.mark_email_unread_outlined,
               color: _green,
-              size: 36,
+              size: 30,
             ),
           ),
         ),
         const SizedBox(height: 20),
-        const Text(
+        Text(
           'Enter verification code',
           textAlign: TextAlign.center,
           style: _title,
@@ -1512,13 +1524,13 @@ class _EmailVerificationPage extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: const Color(0xFFF7F8F1),
+            color: _mist,
             borderRadius: BorderRadius.circular(14),
           ),
           child: const Text(
             'Check your inbox and spam folder. The code is sent by FRSH Nearby and expires soon.',
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 13, height: 1.4),
+            style: TextStyle(fontSize: 13, height: 1.4, color: _ink),
           ),
         ),
         const SizedBox(height: 16),
@@ -1528,6 +1540,12 @@ class _EmailVerificationPage extends StatelessWidget {
           textInputAction: TextInputAction.done,
           maxLength: 6,
           textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 10,
+            color: _ink,
+          ),
           decoration: const InputDecoration(
             labelText: 'Verification code',
             counterText: '',
@@ -1539,7 +1557,11 @@ class _EmailVerificationPage extends StatelessWidget {
               ? 'Code expired. Request a new code.'
               : 'Code expires in ${_formatDuration(expiresAt)}',
           textAlign: TextAlign.center,
-          style: const TextStyle(color: _muted, fontWeight: FontWeight.w700),
+          style: const TextStyle(
+            color: _muted,
+            fontSize: 12.5,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         const SizedBox(height: 20),
         _PrimaryButton(
@@ -1626,7 +1648,11 @@ class _DetailsPage extends StatelessWidget {
             InputDecorator(
               decoration: const InputDecoration(
                 labelText: 'Verified email address',
-                prefixIcon: Icon(Icons.verified_outlined),
+                suffixIcon: Icon(
+                  Icons.verified_outlined,
+                  color: _green,
+                  size: 20,
+                ),
               ),
               child: Text(email),
             ),
@@ -1637,7 +1663,11 @@ class _DetailsPage extends StatelessWidget {
               decoration: const InputDecoration(
                 labelText: 'Date of birth *',
                 hintText: 'Select date',
-                prefixIcon: Icon(Icons.cake_outlined),
+                suffixIcon: Icon(
+                  Icons.calendar_today_outlined,
+                  color: _muted,
+                  size: 18,
+                ),
               ),
               onTap: () async {
                 final now = DateTime.now();
@@ -1721,7 +1751,7 @@ class _BusinessPage extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const _Eyebrow('STEP 3 OF 4'),
-          const Text('Business details', style: _title),
+          Text('Business details', style: _title),
           const SizedBox(height: 6),
           const Text(
             'These details help us verify your storefront. Only your public name and address area are shown.',
@@ -1842,7 +1872,7 @@ class _ReviewPage extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const _Eyebrow('FINAL STEP'),
-          const Text('Everything looks fresh', style: _title),
+          Text('Everything looks fresh', style: _title),
           const SizedBox(height: 6),
           const Text(
             'Confirm what we saved. You can edit anything before continuing.',
@@ -1939,33 +1969,49 @@ class _CompletePage extends StatelessWidget {
   final VoidCallback onDone;
 
   @override
-  Widget build(BuildContext context) => _PagePadding(
+  Widget build(BuildContext context) => _ScrollPage(
     child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Center(
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              Container(
-                width: 108,
-                height: 108,
-                decoration: const BoxDecoration(
-                  color: _mist,
-                  shape: BoxShape.circle,
+        const SizedBox(height: 8),
+        Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.bottomCenter,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: AspectRatio(
+                aspectRatio: 16 / 11,
+                child: Image.asset(
+                  'assets/images/auth_sunrise.jpg',
+                  fit: BoxFit.cover,
                 ),
               ),
-              const CircleAvatar(
-                radius: 36,
-                backgroundColor: Color(0xFFDCEBDD),
-                child: Icon(Icons.check_rounded, color: _green, size: 40),
+            ),
+            Positioned(
+              bottom: -30,
+              child: Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  color: _green,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: _cream, width: 4),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x2E12331F),
+                      blurRadius: 16,
+                      offset: Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: const Center(child: _DrawnCheck()),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
-        const SizedBox(height: 20),
-        const Text(
+        const SizedBox(height: 48),
+        Text(
           'Welcome to FRSH nearby!',
           textAlign: TextAlign.center,
           style: _title,
@@ -1976,13 +2022,67 @@ class _CompletePage extends StatelessWidget {
               ? 'Your local food journey starts now.'
               : 'Your profile is ready. You can apply for seller verification later from your profile.',
           textAlign: TextAlign.center,
-          style: const TextStyle(color: _muted, height: 1.4),
+          style: const TextStyle(color: _muted, height: 1.45),
         ),
-        const SizedBox(height: 28),
+        const SizedBox(height: 30),
         _PrimaryButton(label: 'Explore FRSH', onPressed: onDone),
       ],
     ),
   );
+}
+
+class _DrawnCheck extends StatelessWidget {
+  const _DrawnCheck();
+
+  @override
+  Widget build(BuildContext context) => TweenAnimationBuilder<double>(
+    tween: Tween(begin: 0, end: 1),
+    duration: const Duration(milliseconds: 750),
+    curve: Curves.easeOutCubic,
+    builder:
+        (context, value, _) => CustomPaint(
+          size: const Size(28, 28),
+          painter: _CheckPainter(progress: value),
+        ),
+  );
+}
+
+class _CheckPainter extends CustomPainter {
+  _CheckPainter({required this.progress});
+  final double progress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (progress == 0) return;
+    final path =
+        Path()
+          ..moveTo(size.width * .14, size.height * .55)
+          ..lineTo(size.width * .40, size.height * .78)
+          ..lineTo(size.width * .86, size.height * .26);
+    final drawn = Path();
+    var remaining =
+        path.computeMetrics().fold<double>(0, (sum, m) => sum + m.length) *
+        progress;
+    for (final metric in path.computeMetrics()) {
+      final length = remaining.clamp(0.0, metric.length);
+      drawn.addPath(metric.extractPath(0, length), Offset.zero);
+      remaining -= length;
+      if (remaining <= 0) break;
+    }
+    canvas.drawPath(
+      drawn,
+      Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3.2
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_CheckPainter oldDelegate) =>
+      oldDelegate.progress != progress;
 }
 
 class _ProfilePage extends StatelessWidget {
@@ -2049,7 +2149,7 @@ class _ProfilePage extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 34,
-                backgroundColor: const Color(0xFFDCEBDD),
+                backgroundColor: _mist,
                 backgroundImage:
                     photoUrl?.isNotEmpty == true
                         ? NetworkImage(photoUrl!)
@@ -2059,10 +2159,10 @@ class _ProfilePage extends StatelessWidget {
                         ? null
                         : Text(
                           fullName.isEmpty ? 'F' : fullName[0].toUpperCase(),
-                          style: const TextStyle(
+                          style: GoogleFonts.fraunces(
                             color: _green,
-                            fontSize: 24,
-                            fontWeight: FontWeight.w900,
+                            fontSize: 26,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
               ),
@@ -2147,7 +2247,7 @@ class _ProfilePage extends StatelessWidget {
                           children: [
                             const Text(
                               'Seller verification',
-                              style: TextStyle(fontWeight: FontWeight.w900),
+                              style: TextStyle(fontWeight: FontWeight.w700),
                             ),
                             Text(
                               verificationStatus.replaceAll('_', ' '),
@@ -2223,7 +2323,7 @@ class _ProfileSection extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(15),
     decoration: BoxDecoration(
-      color: const Color(0xFFF7F9F3),
+      color: Colors.white,
       borderRadius: BorderRadius.circular(18),
       border: Border.all(color: _line),
     ),
@@ -2234,17 +2334,17 @@ class _ProfileSection extends StatelessWidget {
           width: 42,
           height: 42,
           decoration: BoxDecoration(
-            color: const Color(0xFFDCEBDD),
+            color: _mist,
             borderRadius: BorderRadius.circular(13),
           ),
-          child: Icon(icon, color: _green),
+          child: Icon(icon, color: _green, size: 21),
         ),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
+              Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
               for (final line in lines)
                 Padding(
                   padding: const EdgeInsets.only(top: 3),
@@ -2479,16 +2579,14 @@ class _InternationalPhoneFieldState extends State<_InternationalPhoneField> {
 class _TypeCard extends StatelessWidget {
   const _TypeCard({
     required this.selected,
-    required this.icon,
-    required this.accent,
+    required this.image,
     required this.title,
     required this.subtitle,
     required this.onTap,
     this.badge,
   });
   final bool selected;
-  final IconData icon;
-  final Color accent;
+  final String image;
   final String title;
   final String subtitle;
   final String? badge;
@@ -2500,30 +2598,41 @@ class _TypeCard extends StatelessWidget {
     button: true,
     child: InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(20),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.all(14),
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFFF7FBF6) : Colors.white,
-          borderRadius: BorderRadius.circular(18),
+          color: selected ? const Color(0xFFF2F6EE) : Colors.white,
+          borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: selected ? _green : _line,
-            width: selected ? 2 : 1,
+            width: selected ? 1.6 : 1,
           ),
+          boxShadow:
+              selected
+                  ? const [
+                    BoxShadow(
+                      color: Color(0x142F6B45),
+                      blurRadius: 14,
+                      offset: Offset(0, 6),
+                    ),
+                  ]
+                  : const [],
         ),
         child: Row(
           children: [
-            Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                color: accent,
-                borderRadius: BorderRadius.circular(14),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: Image.asset(
+                image,
+                width: 60,
+                height: 60,
+                fit: BoxFit.cover,
               ),
-              child: Icon(icon, color: _deepGreen, size: 27),
             ),
-            const SizedBox(width: 13),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -2534,8 +2643,9 @@ class _TypeCard extends StatelessWidget {
                         child: Text(
                           title,
                           style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
+                            fontSize: 15.5,
+                            fontWeight: FontWeight.w600,
+                            color: _ink,
                           ),
                         ),
                       ),
@@ -2547,14 +2657,17 @@ class _TypeCard extends StatelessWidget {
                             vertical: 3,
                           ),
                           decoration: BoxDecoration(
-                            color: accent,
+                            color: const Color(0xFFF1EFE6),
                             borderRadius: BorderRadius.circular(999),
+                            border: Border.all(color: _line),
                           ),
                           child: Text(
                             badge!,
                             style: const TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w800,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: .6,
+                              color: _muted,
                             ),
                           ),
                         ),
@@ -2566,19 +2679,27 @@ class _TypeCard extends StatelessWidget {
                     subtitle,
                     style: const TextStyle(
                       color: _muted,
-                      fontSize: 12,
-                      height: 1.3,
+                      fontSize: 12.5,
+                      height: 1.35,
                     ),
                   ),
                 ],
               ),
             ),
             const SizedBox(width: 8),
-            Icon(
-              selected
-                  ? Icons.check_circle_rounded
-                  : Icons.radio_button_unchecked_rounded,
-              color: selected ? _green : _line,
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              transitionBuilder:
+                  (child, animation) =>
+                      ScaleTransition(scale: animation, child: child),
+              child: Icon(
+                selected
+                    ? Icons.check_circle_rounded
+                    : Icons.radio_button_unchecked_rounded,
+                key: ValueKey(selected),
+                color: selected ? _green : _line,
+                size: 22,
+              ),
             ),
           ],
         ),
@@ -2603,8 +2724,9 @@ class _SummaryTile extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(14),
     decoration: BoxDecoration(
-      color: const Color(0xFFF7F8F1),
-      borderRadius: BorderRadius.circular(14),
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: _line),
     ),
     child: Row(
       children: [
@@ -2612,10 +2734,10 @@ class _SummaryTile extends StatelessWidget {
           width: 42,
           height: 42,
           decoration: BoxDecoration(
-            color: const Color(0xFFDCEBDD),
-            borderRadius: BorderRadius.circular(14),
+            color: _mist,
+            borderRadius: BorderRadius.circular(13),
           ),
-          child: Icon(icon, color: _green),
+          child: Icon(icon, color: _green, size: 21),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -2623,7 +2745,7 @@ class _SummaryTile extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(title, style: const TextStyle(color: _muted, fontSize: 12)),
-              Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
+              Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
             ],
           ),
         ),
@@ -2654,7 +2776,7 @@ class _Segmented extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(4),
     decoration: BoxDecoration(
-      color: _mist,
+      color: _field,
       borderRadius: BorderRadius.circular(999),
     ),
     child: Row(
@@ -2689,18 +2811,30 @@ class _Segment extends StatelessWidget {
     onTap: onTap,
     borderRadius: BorderRadius.circular(999),
     child: AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOut,
       padding: const EdgeInsets.symmetric(vertical: 11),
       decoration: BoxDecoration(
         color: selected ? Colors.white : Colors.transparent,
         borderRadius: BorderRadius.circular(999),
+        boxShadow:
+            selected
+                ? const [
+                  BoxShadow(
+                    color: Color(0x1420301F),
+                    blurRadius: 8,
+                    offset: Offset(0, 2),
+                  ),
+                ]
+                : const [],
       ),
       child: Text(
         label,
         textAlign: TextAlign.center,
         style: TextStyle(
           color: selected ? _ink : _muted,
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w600,
+          fontSize: 13.5,
         ),
       ),
     ),
@@ -2709,12 +2843,10 @@ class _Segment extends StatelessWidget {
 
 class _ProviderButton extends StatelessWidget {
   const _ProviderButton({
-    required this.mark,
     required this.label,
     required this.loading,
     required this.onPressed,
   });
-  final String mark;
   final String label;
   final bool loading;
   final VoidCallback onPressed;
@@ -2726,20 +2858,27 @@ class _ProviderButton extends StatelessWidget {
     child: Row(
       children: [
         SizedBox(
-          width: 28,
-          child: Text(
-            mark,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
-          ),
+          width: 22,
+          height: 22,
+          child: SvgPicture.string(_googleLogoSvg),
         ),
         Expanded(child: Text(label, textAlign: TextAlign.center)),
-        const SizedBox(width: 28),
+        const SizedBox(width: 22),
       ],
     ),
   );
 }
 
-class _PrimaryButton extends StatelessWidget {
+const _googleLogoSvg = '''
+<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+<path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+<path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+<path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+<path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+</svg>
+''';
+
+class _PrimaryButton extends StatefulWidget {
   const _PrimaryButton({
     required this.label,
     required this.onPressed,
@@ -2750,26 +2889,60 @@ class _PrimaryButton extends StatelessWidget {
   final bool loading;
 
   @override
-  Widget build(BuildContext context) => FilledButton(
-    onPressed: loading ? null : onPressed,
-    style: FilledButton.styleFrom(
-      minimumSize: const Size.fromHeight(52),
-      backgroundColor: _green,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
-    ),
-    child:
-        loading
-            ? const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: Colors.white,
-              ),
-            )
-            : Text(label),
-  );
+  State<_PrimaryButton> createState() => _PrimaryButtonState();
+}
+
+class _PrimaryButtonState extends State<_PrimaryButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = !widget.loading && widget.onPressed != null;
+    return AnimatedScale(
+      scale: _pressed && enabled ? .98 : 1,
+      duration: const Duration(milliseconds: 120),
+      curve: Curves.easeOut,
+      child: Listener(
+        onPointerDown: (_) => setState(() => _pressed = true),
+        onPointerUp: (_) => setState(() => _pressed = false),
+        onPointerCancel: (_) => setState(() => _pressed = false),
+        child: FilledButton(
+          onPressed: widget.loading ? null : widget.onPressed,
+          style: FilledButton.styleFrom(
+            minimumSize: const Size.fromHeight(56),
+            backgroundColor: _deepGreen,
+            disabledBackgroundColor:
+                widget.loading ? _deepGreen : const Color(0xFFD8DCD2),
+            disabledForegroundColor:
+                widget.loading ? Colors.white70 : _muted,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            textStyle: const TextStyle(
+              fontSize: 15.5,
+              fontWeight: FontWeight.w600,
+              letterSpacing: .2,
+            ),
+          ),
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            child:
+                widget.loading
+                    ? const SizedBox(
+                      key: ValueKey('spinner'),
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                    : Text(widget.label, key: const ValueKey('label')),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _Eyebrow extends StatelessWidget {
@@ -2778,26 +2951,17 @@ class _Eyebrow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 6),
+    padding: const EdgeInsets.only(bottom: 7),
     child: Text(
       text,
       style: const TextStyle(
-        color: _green,
-        fontSize: 11,
-        letterSpacing: 1.2,
-        fontWeight: FontWeight.w900,
+        color: Color(0xFF57705C),
+        fontSize: 10.5,
+        letterSpacing: 1.8,
+        fontWeight: FontWeight.w700,
       ),
     ),
   );
-}
-
-class _PagePadding extends StatelessWidget {
-  const _PagePadding({required this.child});
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) =>
-      Padding(padding: const EdgeInsets.all(20), child: child);
 }
 
 class _ScrollPage extends StatelessWidget {
@@ -2805,23 +2969,38 @@ class _ScrollPage extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => SingleChildScrollView(
-    padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
-    child: child,
+  Widget build(BuildContext context) => TweenAnimationBuilder<double>(
+    tween: Tween(begin: 0, end: 1),
+    duration: const Duration(milliseconds: 450),
+    curve: Curves.easeOutCubic,
+    builder:
+        (context, value, child) => Opacity(
+          opacity: value,
+          child: Transform.translate(
+            offset: Offset(0, 14 * (1 - value)),
+            child: child,
+          ),
+        ),
+    child: SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 22, 24, 28),
+      child: child,
+    ),
   );
 }
 
-const _title = TextStyle(
+final _title = GoogleFonts.fraunces(
   color: _ink,
-  fontSize: 24,
+  fontSize: 25,
   height: 1.15,
-  fontWeight: FontWeight.w900,
+  fontWeight: FontWeight.w600,
+  letterSpacing: -.3,
 );
 
 final _outlineStyle = OutlinedButton.styleFrom(
-  minimumSize: const Size.fromHeight(50),
+  minimumSize: const Size.fromHeight(54),
   foregroundColor: _ink,
+  backgroundColor: Colors.white,
   side: const BorderSide(color: _line),
-  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-  textStyle: const TextStyle(fontWeight: FontWeight.w700),
+  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+  textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
 );

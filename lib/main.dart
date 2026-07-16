@@ -19,43 +19,62 @@ class FrshNearbyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const primary = Color(0xFF2F6B45);
-    const ink = Color(0xFF183326);
-    const line = Color(0xFFE2E8DD);
+    const ink = Color(0xFF1B2A20);
+    const muted = Color(0xFF66735F);
+    const field = Color(0xFFF3F2EA);
+    const cream = Color(0xFFFBFAF5);
+
+    OutlineInputBorder inputBorder(Color color, [double width = 1]) =>
+        OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide:
+              color == Colors.transparent
+                  ? BorderSide.none
+                  : BorderSide(color: color, width: width),
+        );
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       onGenerateTitle: (context) => AppLocalizations.of(context)!.appTitle,
       theme: ThemeData(
         useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: primary),
-        scaffoldBackgroundColor: const Color(0xFFF9FAF5),
-        textTheme: GoogleFonts.nunitoSansTextTheme().apply(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: primary,
+        ).copyWith(primary: primary),
+        scaffoldBackgroundColor: cream,
+        textTheme: GoogleFonts.interTextTheme().apply(
           bodyColor: ink,
           displayColor: ink,
         ),
+        textButtonTheme: TextButtonThemeData(
+          style: TextButton.styleFrom(
+            foregroundColor: primary,
+            textStyle: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+        ),
+        snackBarTheme: SnackBarThemeData(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: ink,
+          contentTextStyle: GoogleFonts.inter(color: cream, fontSize: 13.5),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
-          fillColor: Colors.white,
+          fillColor: field,
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 16,
-            vertical: 15,
+            vertical: 16,
           ),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: line),
+          labelStyle: const TextStyle(
+            color: muted,
+            fontWeight: FontWeight.w500,
           ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: line),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: primary, width: 2),
-          ),
-          errorBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: Color(0xFFBA1A1A)),
-          ),
+          hintStyle: const TextStyle(color: Color(0xFF9AA69A)),
+          border: inputBorder(Colors.transparent),
+          enabledBorder: inputBorder(Colors.transparent),
+          focusedBorder: inputBorder(primary, 1.6),
+          errorBorder: inputBorder(const Color(0xFFBA1A1A)),
+          focusedErrorBorder: inputBorder(const Color(0xFFBA1A1A), 1.6),
         ),
       ),
       localizationsDelegates: const [
@@ -89,56 +108,37 @@ class _ResponsiveAuthPreview extends StatelessWidget {
 
         final phoneHeight = (constraints.maxHeight - 64).clamp(640.0, 860.0);
         return Scaffold(
-          backgroundColor: const Color(0xFFEFF4E9),
-          body: Stack(
-            children: [
-              Positioned(
-                top: -120,
-                right: -80,
-                child: Container(
-                  width: 360,
-                  height: 360,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFDCEBDD),
-                    shape: BoxShape.circle,
-                  ),
+          backgroundColor: const Color(0xFF0E2118),
+          body: DecoratedBox(
+            decoration: const BoxDecoration(
+              gradient: RadialGradient(
+                center: Alignment(0, -.4),
+                radius: 1.2,
+                colors: [Color(0xFF16321F), Color(0xFF0E2118)],
+              ),
+            ),
+            child: Center(
+              child: Container(
+                width: 430,
+                height: phoneHeight,
+                padding: const EdgeInsets.all(9),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0A1811),
+                  borderRadius: BorderRadius.circular(40),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x59040B07),
+                      blurRadius: 60,
+                      offset: Offset(0, 28),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(32),
+                  child: const AuthScreen(),
                 ),
               ),
-              Positioned(
-                bottom: -160,
-                left: -100,
-                child: Container(
-                  width: 420,
-                  height: 420,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFDCEBDD),
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ),
-              Center(
-                child: Container(
-                  width: 430,
-                  height: phoneHeight,
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF183326),
-                    borderRadius: BorderRadius.circular(38),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x260D2C1E),
-                        blurRadius: 42,
-                        offset: Offset(0, 20),
-                      ),
-                    ],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(32),
-                    child: const AuthScreen(),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
         );
       },
