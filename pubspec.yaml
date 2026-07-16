@@ -48,6 +48,7 @@ dependencies:
   firebase_core: 4.4.0
   firebase_auth: 6.1.4
   google_sign_in: ^7.2.0
+  file_picker: 8.3.7
   # 1.2+ requires a newer Flutter SDK; 1.1.2 supports Flutter 3.29.
   image_picker: 1.1.2
   geolocator: ^14.0.2

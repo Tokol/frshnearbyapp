@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:country_picker/country_picker.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -676,21 +677,32 @@ class _AuthScreenState extends State<AuthScreen>
   }
 
   Future<void> _addVerificationDocument(String kind) async {
-    final picked = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 86,
-      maxWidth: 1800,
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png', 'webp'],
+      withData: true,
     );
-    if (picked == null) return;
-    final bytes = await picked.readAsBytes();
+    final file = picked?.files.single;
+    final bytes = file?.bytes;
+    if (file == null || bytes == null) return;
     if (bytes.length > 8 * 1024 * 1024) {
       _showAuthError('Each verification file must be 8 MB or smaller.');
       return;
     }
+    final mimeType = _mimeTypeForName(file.name);
+    if (!{
+      'application/pdf',
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+    }.contains(mimeType)) {
+      _showAuthError('Upload a PDF, JPG, PNG, or WEBP file.');
+      return;
+    }
     final document = VerificationDocumentUpload(
       kind: kind,
-      originalName: picked.name,
-      mimeType: picked.mimeType ?? _mimeTypeForName(picked.name),
+      originalName: file.name,
+      mimeType: mimeType,
       bytes: bytes,
     );
     setState(() {
@@ -707,6 +719,7 @@ class _AuthScreenState extends State<AuthScreen>
 
   String _mimeTypeForName(String name) {
     final lower = name.toLowerCase();
+    if (lower.endsWith('.pdf')) return 'application/pdf';
     if (lower.endsWith('.png')) return 'image/png';
     if (lower.endsWith('.webp')) return 'image/webp';
     return 'image/jpeg';
@@ -2595,7 +2608,7 @@ class _VerificationDocumentRow extends StatelessWidget {
                 style: const TextStyle(fontWeight: FontWeight.w700),
               ),
               Text(
-                document?.originalName ?? 'Image upload',
+                document?.originalName ?? 'PDF or image upload',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(color: _muted, fontSize: 12),
