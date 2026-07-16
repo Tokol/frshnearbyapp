@@ -55,6 +55,7 @@ class _AuthScreenState extends State<AuthScreen>
   final _businessAddressController = TextEditingController();
   final _businessCityController = TextEditingController();
   final _businessPostalController = TextEditingController();
+  final _verificationResponseController = TextEditingController();
   final _authService = AuthService();
   final _backend = BackendService();
   final _progressStore = OnboardingProgressStore();
@@ -72,6 +73,8 @@ class _AuthScreenState extends State<AuthScreen>
   String? _businessType;
   String _verificationStatus = 'NOT_REQUIRED';
   String? _verificationMessage;
+  List<String> _requestedVerificationDocuments = [];
+  bool _verificationRequiresTextResponse = false;
   Timer? _draftTimer;
   Timer? _verificationTimer;
   DateTime? _verificationExpiresAt;
@@ -235,6 +238,7 @@ class _AuthScreenState extends State<AuthScreen>
     _businessAddressController.dispose();
     _businessCityController.dispose();
     _businessPostalController.dispose();
+    _verificationResponseController.dispose();
     _verificationTimer?.cancel();
     super.dispose();
   }
@@ -391,6 +395,10 @@ class _AuthScreenState extends State<AuthScreen>
     _socialPhotoUrl = profile.photoUrl ?? _socialPhotoUrl;
     _verificationStatus = profile.verificationStatus;
     _verificationMessage = profile.latestVerificationMessage;
+    _requestedVerificationDocuments =
+        profile.latestVerificationRequestedDocuments;
+    _verificationRequiresTextResponse =
+        profile.latestVerificationRequiresTextResponse;
     if (profile.roles.contains('BUSINESS')) {
       _sellerType = _AccountType.business;
     } else if (profile.roles.contains('SIDE_HUSTLER')) {
@@ -637,18 +645,26 @@ class _AuthScreenState extends State<AuthScreen>
 
   Future<void> _submitSellerVerification() async {
     if (_sellerType == null || _authBusy) return;
-    final requiredKind =
-        _sellerType == _AccountType.business
-            ? 'BUSINESS_REGISTRATION'
-            : 'IDENTITY';
-    if (!_verificationDocuments.any(
-      (document) => document.kind == requiredKind,
-    )) {
-      _showAuthError(
-        _sellerType == _AccountType.business
-            ? 'Upload business registration proof before submitting.'
-            : 'Upload proof of identity before submitting.',
-      );
+    final requested = _requestedVerificationDocuments.toSet();
+    final isChangeRequest = _verificationStatus == 'NEEDS_CHANGES';
+    final requiredKinds =
+        isChangeRequest
+            ? requested
+            : {
+              _sellerType == _AccountType.business
+                  ? 'BUSINESS_REGISTRATION'
+                  : 'IDENTITY',
+            };
+    for (final kind in requiredKinds) {
+      if (!_verificationDocuments.any((document) => document.kind == kind)) {
+        _showAuthError('Upload ${_documentKindLabel(kind).toLowerCase()}.');
+        return;
+      }
+    }
+    if (isChangeRequest &&
+        _verificationRequiresTextResponse &&
+        _verificationResponseController.text.trim().length < 2) {
+      _showAuthError('Add a written response before submitting.');
       return;
     }
     if (!_verificationConfirmed) {
@@ -657,13 +673,27 @@ class _AuthScreenState extends State<AuthScreen>
     }
     setState(() => _authBusy = true);
     try {
-      await _backend.submitForVerification(documents: _verificationDocuments);
+      final submissionDocuments =
+          isChangeRequest && requested.isNotEmpty
+              ? _verificationDocuments
+                  .where((document) => requested.contains(document.kind))
+                  .toList()
+              : isChangeRequest
+              ? <VerificationDocumentUpload>[]
+              : _verificationDocuments;
+      await _backend.submitForVerification(
+        documents: submissionDocuments,
+        responseMessage: _verificationResponseController.text,
+      );
       if (!mounted) return;
       setState(() {
         _verificationStatus = 'SUBMITTED';
         _verificationMessage = null;
+        _requestedVerificationDocuments = [];
+        _verificationRequiresTextResponse = false;
         _verificationConfirmed = false;
       });
+      _verificationResponseController.clear();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Your verification request was sent for review.'),
@@ -675,6 +705,15 @@ class _AuthScreenState extends State<AuthScreen>
       if (mounted) setState(() => _authBusy = false);
     }
   }
+
+  String _documentKindLabel(String kind) => switch (kind) {
+    'IDENTITY' => 'Proof of identity',
+    'BUSINESS_REGISTRATION' => 'Business registration proof',
+    'VAT_REGISTRATION' => 'Tax or VAT document',
+    'ADDRESS_PROOF' => 'Activity or location proof',
+    'OTHER' => 'Other document',
+    _ => 'Verification document',
+  };
 
   Future<void> _addVerificationDocument(String kind) async {
     final picked = await FilePicker.platform.pickFiles(
@@ -1067,6 +1106,12 @@ class _AuthScreenState extends State<AuthScreen>
                                 location: _confirmedLocation,
                                 verificationStatus: _verificationStatus,
                                 verificationMessage: _verificationMessage,
+                                requestedVerificationDocuments:
+                                    _requestedVerificationDocuments,
+                                verificationRequiresTextResponse:
+                                    _verificationRequiresTextResponse,
+                                verificationResponseController:
+                                    _verificationResponseController,
                                 verificationDocuments: _verificationDocuments,
                                 verificationConfirmed: _verificationConfirmed,
                                 busy: _authBusy,
@@ -2176,6 +2221,9 @@ class _ProfilePage extends StatelessWidget {
     required this.location,
     required this.verificationStatus,
     required this.verificationMessage,
+    required this.requestedVerificationDocuments,
+    required this.verificationRequiresTextResponse,
+    required this.verificationResponseController,
     required this.verificationDocuments,
     required this.verificationConfirmed,
     required this.busy,
@@ -2198,6 +2246,9 @@ class _ProfilePage extends StatelessWidget {
   final ConfirmedLocation? location;
   final String verificationStatus;
   final String? verificationMessage;
+  final List<String> requestedVerificationDocuments;
+  final bool verificationRequiresTextResponse;
+  final TextEditingController verificationResponseController;
   final List<VerificationDocumentUpload> verificationDocuments;
   final bool verificationConfirmed;
   final bool busy;
@@ -2371,6 +2422,10 @@ class _ProfilePage extends StatelessWidget {
                     const SizedBox(height: 13),
                     _VerificationDocumentsCard(
                       type: type,
+                      verificationStatus: verificationStatus,
+                      requestedDocuments: requestedVerificationDocuments,
+                      requiresTextResponse: verificationRequiresTextResponse,
+                      responseController: verificationResponseController,
                       documents: verificationDocuments,
                       confirmed: verificationConfirmed,
                       onAdd: onAddVerificationDocument,
@@ -2462,6 +2517,10 @@ class _ProfileSection extends StatelessWidget {
 class _VerificationDocumentsCard extends StatelessWidget {
   const _VerificationDocumentsCard({
     required this.type,
+    required this.verificationStatus,
+    required this.requestedDocuments,
+    required this.requiresTextResponse,
+    required this.responseController,
     required this.documents,
     required this.confirmed,
     required this.onAdd,
@@ -2470,6 +2529,10 @@ class _VerificationDocumentsCard extends StatelessWidget {
   });
 
   final _AccountType type;
+  final String verificationStatus;
+  final List<String> requestedDocuments;
+  final bool requiresTextResponse;
+  final TextEditingController responseController;
   final List<VerificationDocumentUpload> documents;
   final bool confirmed;
   final ValueChanged<String> onAdd;
@@ -2477,6 +2540,17 @@ class _VerificationDocumentsCard extends StatelessWidget {
   final ValueChanged<bool?> onConfirmed;
 
   List<_VerificationDocumentRequirement> get _requirements {
+    if (verificationStatus == 'NEEDS_CHANGES') {
+      return requestedDocuments
+          .map(
+            (kind) => _VerificationDocumentRequirement(
+              kind: kind,
+              label: _documentKindLabel(kind),
+              required: true,
+            ),
+          )
+          .toList();
+    }
     if (type == _AccountType.business) {
       return const [
         _VerificationDocumentRequirement(
@@ -2510,49 +2584,92 @@ class _VerificationDocumentsCard extends StatelessWidget {
     return null;
   }
 
+  static String _documentKindLabel(String kind) => switch (kind) {
+    'IDENTITY' => 'Proof of identity',
+    'BUSINESS_REGISTRATION' => 'Business registration proof',
+    'VAT_REGISTRATION' => 'Tax or VAT document',
+    'ADDRESS_PROOF' => 'Activity or location proof',
+    'OTHER' => 'Other document',
+    _ => 'Verification document',
+  };
+
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(14),
-    decoration: BoxDecoration(
-      color: Colors.white.withValues(alpha: 0.76),
-      borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: _line),
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const Text(
-          'Verification proof',
-          style: TextStyle(fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: 5),
-        const Text(
-          'Review the details above, attach proof, then confirm they are correct.',
-          style: TextStyle(color: _muted, fontSize: 12, height: 1.35),
-        ),
-        const SizedBox(height: 12),
-        for (final requirement in _requirements) ...[
-          _VerificationDocumentRow(
-            requirement: requirement,
-            document: _documentFor(requirement.kind),
-            onAdd: () => onAdd(requirement.kind),
-            onRemove: () => onRemove(requirement.kind),
+  Widget build(BuildContext context) {
+    final isChangeRequest = verificationStatus == 'NEEDS_CHANGES';
+    final requirements = _requirements;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.76),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            isChangeRequest ? 'Requested update' : 'Verification proof',
+            style: TextStyle(fontWeight: FontWeight.w800),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 5),
+          Text(
+            isChangeRequest
+                ? 'Reply to the review team and upload only the requested file(s).'
+                : 'Review the details above, attach proof, then confirm they are correct.',
+            style: TextStyle(color: _muted, fontSize: 12, height: 1.35),
+          ),
+          const SizedBox(height: 12),
+          if (requirements.isEmpty && isChangeRequest)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: _cream,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: _line),
+              ),
+              child: const Text(
+                'No new file upload requested.',
+                style: TextStyle(color: _muted, fontSize: 12, height: 1.35),
+              ),
+            )
+          else
+            for (final requirement in requirements) ...[
+              _VerificationDocumentRow(
+                requirement: requirement,
+                document: _documentFor(requirement.kind),
+                onAdd: () => onAdd(requirement.kind),
+                onRemove: () => onRemove(requirement.kind),
+              ),
+              const SizedBox(height: 8),
+            ],
+          if (requiresTextResponse) ...[
+            const SizedBox(height: 4),
+            TextField(
+              controller: responseController,
+              minLines: 3,
+              maxLines: 5,
+              textInputAction: TextInputAction.newline,
+              decoration: const InputDecoration(
+                labelText: 'Response to reviewer',
+                hintText: 'Answer the question or explain what you changed.',
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+          CheckboxListTile(
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            value: confirmed,
+            onChanged: onConfirmed,
+            title: const Text(
+              'I confirm these details are accurate and I am responsible for the products I sell.',
+              style: TextStyle(fontSize: 12, height: 1.35),
+            ),
+          ),
         ],
-        CheckboxListTile(
-          contentPadding: EdgeInsets.zero,
-          controlAffinity: ListTileControlAffinity.leading,
-          value: confirmed,
-          onChanged: onConfirmed,
-          title: const Text(
-            'I confirm these details are accurate and I am responsible for the products I sell.',
-            style: TextStyle(fontSize: 12, height: 1.35),
-          ),
-        ),
-      ],
-    ),
-  );
+      ),
+    );
+  }
 }
 
 class _VerificationDocumentRequirement {
