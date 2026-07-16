@@ -39,6 +39,7 @@ class _AuthScreenState extends State<AuthScreen>
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+  final _verificationCodeController = TextEditingController();
   final _fullNameController = TextEditingController();
   final _dateOfBirthController = TextEditingController();
   final _displayNameController = TextEditingController();
@@ -69,6 +70,9 @@ class _AuthScreenState extends State<AuthScreen>
   String _verificationStatus = 'NOT_REQUIRED';
   String? _verificationMessage;
   Timer? _draftTimer;
+  Timer? _verificationTimer;
+  DateTime? _verificationExpiresAt;
+  DateTime? _verificationResendAvailableAt;
 
   _AccountType get _effectiveType => _sellerType ?? _AccountType.consumer;
   int get _reviewPage => _sellerType == _AccountType.business ? 4 : 3;
@@ -212,6 +216,7 @@ class _AuthScreenState extends State<AuthScreen>
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
+    _verificationCodeController.dispose();
     _fullNameController.dispose();
     _dateOfBirthController.dispose();
     _displayNameController.dispose();
@@ -224,6 +229,7 @@ class _AuthScreenState extends State<AuthScreen>
     _businessAddressController.dispose();
     _businessCityController.dispose();
     _businessPostalController.dispose();
+    _verificationTimer?.cancel();
     super.dispose();
   }
 
@@ -268,30 +274,84 @@ class _AuthScreenState extends State<AuthScreen>
   Future<void> _submitEmail() async {
     if (!(_emailKey.currentState?.validate() ?? false)) return;
     if (!_registering) {
-      await _runAuthentication(
-        () => _authService.signInWithEmail(
-          email: _emailController.text,
-          password: _passwordController.text,
-        ),
-      );
+      await _signInWithEmailAndPassword();
       return;
     }
 
     if (_authBusy) return;
     setState(() => _authBusy = true);
     try {
-      final credential = await _authService.registerWithEmail(
+      final challenge = await _backend.requestEmailSignup(
+        email: _emailController.text,
+        password: _passwordController.text,
+        displayName:
+            _fullNameController.text.trim().isEmpty
+                ? _emailController.text.trim().split('@').first
+                : _fullNameController.text.trim(),
+      );
+      if (!mounted) return;
+      _startEmailVerification(challenge);
+    } on FirebaseAuthException catch (error) {
+      if (mounted) _showAuthError(_authMessage(error));
+    } catch (error) {
+      if (mounted) _showAuthError(_serverMessage(error));
+    } finally {
+      if (mounted) setState(() => _authBusy = false);
+    }
+  }
+
+  Future<void> _signInWithEmailAndPassword() async {
+    if (_authBusy) return;
+    setState(() => _authBusy = true);
+    try {
+      final credential = await _authService.signInWithEmail(
         email: _emailController.text,
         password: _passwordController.text,
       );
       if (!mounted) return;
       _prefillFromUser(credential.user);
-      _goTo(7);
+      final usesPassword =
+          credential.user?.providerData.any(
+            (provider) => provider.providerId == 'password',
+          ) ??
+          false;
+      if (usesPassword && !(credential.user?.emailVerified ?? false)) {
+        final challenge = await _backend.requestEmailSignup(
+          email: _emailController.text,
+          password: _passwordController.text,
+          displayName:
+              credential.user?.displayName ??
+              _emailController.text.trim().split('@').first,
+        );
+        if (!mounted) return;
+        _startEmailVerification(challenge);
+        return;
+      }
+      final profile = await _backend.session();
+      if (!mounted) return;
+      _restoreBackendProfile(profile);
+      _goTo(_resumePage(profile));
     } on FirebaseAuthException catch (error) {
       if (mounted) _showAuthError(_authMessage(error));
+    } catch (error) {
+      if (mounted) _showAuthError(_serverMessage(error));
     } finally {
       if (mounted) setState(() => _authBusy = false);
     }
+  }
+
+  void _startEmailVerification(EmailSignupChallenge challenge) {
+    _verificationCodeController.clear();
+    _verificationTimer?.cancel();
+    _verificationTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted && _page == 7) setState(() {});
+    });
+    setState(() {
+      _emailController.text = challenge.email;
+      _verificationExpiresAt = challenge.expiresAt;
+      _verificationResendAvailableAt = challenge.resendAvailableAt;
+    });
+    _goTo(7);
   }
 
   void _prefillFromUser(User? user) {
@@ -436,19 +496,28 @@ class _AuthScreenState extends State<AuthScreen>
   }
 
   Future<void> _checkVerification() async {
+    if (_verificationCodeController.text.trim().length != 6) {
+      _showAuthError('Enter the 6-digit verification code.');
+      return;
+    }
     setState(() => _authBusy = true);
     try {
-      final verified = await _authService.refreshEmailVerification();
+      final customToken = await _backend.verifyEmailSignup(
+        email: _emailController.text,
+        code: _verificationCodeController.text,
+      );
+      final credential = await _authService.signInWithCustomToken(customToken);
       if (!mounted) return;
-      if (verified) {
-        _goTo(2);
-      } else {
-        _showAuthError(
-          'Email is not verified yet. Open the link and try again.',
-        );
+      _prefillFromUser(credential.user);
+      if (credential.user != null) {
+        await _restoreLocalDraft(credential.user!.uid);
       }
+      _verificationTimer?.cancel();
+      _goTo(2);
     } on FirebaseAuthException catch (error) {
       if (mounted) _showAuthError(_authMessage(error));
+    } catch (error) {
+      if (mounted) _showAuthError(_serverMessage(error));
     } finally {
       if (mounted) setState(() => _authBusy = false);
     }
@@ -456,14 +525,20 @@ class _AuthScreenState extends State<AuthScreen>
 
   Future<void> _resendVerification() async {
     try {
-      await _authService.resendEmailVerification();
+      final challenge = await _backend.resendEmailSignupCode(
+        _emailController.text,
+      );
+      if (!mounted) return;
+      _startEmailVerification(challenge);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('A new verification email was sent.')),
+          const SnackBar(content: Text('A new verification code was sent.')),
         );
       }
     } on FirebaseAuthException catch (error) {
       if (mounted) _showAuthError(_authMessage(error));
+    } catch (error) {
+      if (mounted) _showAuthError(_serverMessage(error));
     }
   }
 
@@ -893,6 +968,10 @@ class _AuthScreenState extends State<AuthScreen>
                               ),
                               _EmailVerificationPage(
                                 email: _emailController.text.trim(),
+                                codeController: _verificationCodeController,
+                                expiresAt: _verificationExpiresAt,
+                                resendAvailableAt:
+                                    _verificationResendAvailableAt,
                                 loading: _authBusy,
                                 onCheck: _checkVerification,
                                 onResend: _resendVerification,
@@ -1361,16 +1440,41 @@ class _AccountTypePage extends StatelessWidget {
 class _EmailVerificationPage extends StatelessWidget {
   const _EmailVerificationPage({
     required this.email,
+    required this.codeController,
+    required this.expiresAt,
+    required this.resendAvailableAt,
     required this.loading,
     required this.onCheck,
     required this.onResend,
     required this.onChangeEmail,
   });
   final String email;
+  final TextEditingController codeController;
+  final DateTime? expiresAt;
+  final DateTime? resendAvailableAt;
   final bool loading;
   final VoidCallback onCheck;
   final VoidCallback onResend;
   final VoidCallback onChangeEmail;
+
+  bool get _isExpired {
+    final expires = expiresAt;
+    return expires != null && DateTime.now().isAfter(expires);
+  }
+
+  bool get _canResend {
+    final resendAt = resendAvailableAt;
+    return resendAt == null || !DateTime.now().isBefore(resendAt);
+  }
+
+  String _formatDuration(DateTime? target) {
+    if (target == null) return '0:00';
+    final duration = target.difference(DateTime.now());
+    final safe = duration.isNegative ? Duration.zero : duration;
+    final minutes = safe.inMinutes.remainder(60);
+    final seconds = safe.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
 
   @override
   Widget build(BuildContext context) => _ScrollPage(
@@ -1394,13 +1498,13 @@ class _EmailVerificationPage extends StatelessWidget {
         ),
         const SizedBox(height: 20),
         const Text(
-          'Verify your email',
+          'Enter verification code',
           textAlign: TextAlign.center,
           style: _title,
         ),
         const SizedBox(height: 8),
         Text(
-          'We sent a verification link to\n$email',
+          'We sent a 6-digit code to\n$email',
           textAlign: TextAlign.center,
           style: const TextStyle(color: _muted, height: 1.4),
         ),
@@ -1412,21 +1516,45 @@ class _EmailVerificationPage extends StatelessWidget {
             borderRadius: BorderRadius.circular(14),
           ),
           child: const Text(
-            'Open the link in your email, then return here. Check your spam folder if it does not arrive.',
+            'Check your inbox and spam folder. The code is sent by FRSH Nearby and expires soon.',
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 13, height: 1.4),
           ),
         ),
+        const SizedBox(height: 16),
+        TextField(
+          controller: codeController,
+          keyboardType: TextInputType.number,
+          textInputAction: TextInputAction.done,
+          maxLength: 6,
+          textAlign: TextAlign.center,
+          decoration: const InputDecoration(
+            labelText: 'Verification code',
+            counterText: '',
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          _isExpired
+              ? 'Code expired. Request a new code.'
+              : 'Code expires in ${_formatDuration(expiresAt)}',
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: _muted, fontWeight: FontWeight.w700),
+        ),
         const SizedBox(height: 20),
         _PrimaryButton(
-          label: 'I have verified my email',
-          onPressed: onCheck,
+          label: 'Verify email',
+          onPressed: _isExpired ? null : onCheck,
           loading: loading,
         ),
         const SizedBox(height: 8),
         TextButton(
-          onPressed: loading ? null : onResend,
-          child: const Text('Resend verification email'),
+          onPressed: loading || !_canResend ? null : onResend,
+          child: Text(
+            _canResend
+                ? 'Resend verification code'
+                : 'Resend in ${_formatDuration(resendAvailableAt)}',
+          ),
         ),
         TextButton(
           onPressed: loading ? null : onChangeEmail,
@@ -2618,7 +2746,7 @@ class _PrimaryButton extends StatelessWidget {
     this.loading = false,
   });
   final String label;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
   final bool loading;
 
   @override

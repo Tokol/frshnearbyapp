@@ -60,6 +60,25 @@ class BackendUser {
   );
 }
 
+class EmailSignupChallenge {
+  const EmailSignupChallenge({
+    required this.email,
+    required this.expiresAt,
+    required this.resendAvailableAt,
+  });
+
+  final String email;
+  final DateTime expiresAt;
+  final DateTime resendAvailableAt;
+
+  factory EmailSignupChallenge.fromJson(Map<String, dynamic> json) =>
+      EmailSignupChallenge(
+        email: json['email'] as String,
+        expiresAt: DateTime.parse(json['expiresAt'] as String),
+        resendAvailableAt: DateTime.parse(json['resendAvailableAt'] as String),
+      );
+}
+
 class ConfirmedLocation {
   const ConfirmedLocation({
     required this.addressLine,
@@ -118,22 +137,35 @@ class BackendService {
     String query, [
     Map<String, dynamic> variables = const {},
   ]) async {
-    return _send(query, variables, forceRefresh: false);
+    return _send(query, variables, forceRefresh: false, authenticated: true);
+  }
+
+  Future<Map<String, dynamic>> _publicGql(
+    String query, [
+    Map<String, dynamic> variables = const {},
+  ]) async {
+    return _send(query, variables, forceRefresh: false, authenticated: false);
   }
 
   Future<Map<String, dynamic>> _send(
     String query,
     Map<String, dynamic> variables, {
     required bool forceRefresh,
+    required bool authenticated,
   }) async {
-    final token = await _auth.currentUser?.getIdToken(forceRefresh);
-    if (token == null) throw StateError('Please sign in again.');
+    final token =
+        authenticated
+            ? await _auth.currentUser?.getIdToken(forceRefresh)
+            : null;
+    if (authenticated && token == null) {
+      throw StateError('Please sign in again.');
+    }
     final response = await _dio.post<Map<String, dynamic>>(
       '',
       data: {'query': query, 'variables': variables},
       options: Options(
         contentType: Headers.jsonContentType,
-        headers: {'authorization': 'Bearer $token'},
+        headers: {if (token != null) 'authorization': 'Bearer $token'},
         validateStatus: (_) => true,
       ),
     );
@@ -142,8 +174,8 @@ class BackendService {
     if (errors != null && errors.isNotEmpty) {
       final first = errors.first as Map<String, dynamic>;
       final code = (first['extensions'] as Map<String, dynamic>?)?['code'];
-      if (!forceRefresh && code == 'UNAUTHENTICATED') {
-        return _send(query, variables, forceRefresh: true);
+      if (authenticated && !forceRefresh && code == 'UNAUTHENTICATED') {
+        return _send(query, variables, forceRefresh: true, authenticated: true);
       }
       throw StateError(first['message'] as String? ?? 'Server request failed.');
     }
@@ -169,6 +201,52 @@ class BackendService {
     return BackendUser.fromJson(
       (data['session'] as Map<String, dynamic>)['user'] as Map<String, dynamic>,
     );
+  }
+
+  Future<EmailSignupChallenge> requestEmailSignup({
+    required String email,
+    required String password,
+    required String displayName,
+  }) async {
+    final data = await _publicGql(
+      'mutation(\$input: EmailSignupInput!) { requestEmailSignup(input: \$input) { email expiresAt resendAvailableAt } }',
+      {
+        'input': {
+          'email': email.trim().toLowerCase(),
+          'password': password,
+          'displayName': displayName.trim(),
+        },
+      },
+    );
+    return EmailSignupChallenge.fromJson(
+      data['requestEmailSignup'] as Map<String, dynamic>,
+    );
+  }
+
+  Future<EmailSignupChallenge> resendEmailSignupCode(String email) async {
+    final data = await _publicGql(
+      'mutation(\$input: ResendEmailSignupCodeInput!) { resendEmailSignupCode(input: \$input) { email expiresAt resendAvailableAt } }',
+      {
+        'input': {'email': email.trim().toLowerCase()},
+      },
+    );
+    return EmailSignupChallenge.fromJson(
+      data['resendEmailSignupCode'] as Map<String, dynamic>,
+    );
+  }
+
+  Future<String> verifyEmailSignup({
+    required String email,
+    required String code,
+  }) async {
+    final data = await _publicGql(
+      'mutation(\$input: VerifyEmailSignupInput!) { verifyEmailSignup(input: \$input) { customToken } }',
+      {
+        'input': {'email': email.trim().toLowerCase(), 'code': code.trim()},
+      },
+    );
+    final result = data['verifyEmailSignup'] as Map<String, dynamic>;
+    return result['customToken'] as String;
   }
 
   Future<void> saveAccountType(String accountType) => _gql(

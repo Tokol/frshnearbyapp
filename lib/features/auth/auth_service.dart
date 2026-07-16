@@ -21,7 +21,6 @@ class AuthService {
       email: email.trim(),
       password: password,
     );
-    await credential.user?.sendEmailVerification();
     return credential;
   }
 
@@ -29,10 +28,7 @@ class AuthService {
     required String email,
     required String password,
   }) =>
-      _auth.signInWithEmailAndPassword(
-        email: email.trim(),
-        password: password,
-      );
+      _auth.signInWithEmailAndPassword(email: email.trim(), password: password);
 
   Future<void> sendPasswordReset(String email) =>
       _auth.sendPasswordResetEmail(email: email.trim());
@@ -40,6 +36,9 @@ class AuthService {
   Future<void> resendEmailVerification() async {
     await _auth.currentUser?.sendEmailVerification();
   }
+
+  Future<UserCredential> signInWithCustomToken(String customToken) =>
+      _auth.signInWithCustomToken(customToken);
 
   Future<bool> refreshEmailVerification() async {
     await _auth.currentUser?.reload();
@@ -71,9 +70,10 @@ class AuthService {
   }
 
   Future<UserCredential> signInWithApple() {
-    final provider = AppleAuthProvider()
-      ..addScope('email')
-      ..addScope('name');
+    final provider =
+        AppleAuthProvider()
+          ..addScope('email')
+          ..addScope('name');
     return kIsWeb
         ? _auth.signInWithPopup(provider)
         : _auth.signInWithProvider(provider);
