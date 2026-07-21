@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:country_picker/country_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart' hide Text;
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -45,7 +46,7 @@ class AuthScreen extends StatefulWidget {
 }
 
 class _AuthScreenState extends State<AuthScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   final _controller = PageController();
   final _emailKey = GlobalKey<FormState>();
   final _detailsKey = GlobalKey<FormState>();
@@ -89,6 +90,7 @@ class _AuthScreenState extends State<AuthScreen>
   bool _verificationRequiresTextResponse = false;
   Timer? _draftTimer;
   Timer? _verificationTimer;
+  StreamSubscription<RemoteMessage>? _pushMessageSubscription;
   DateTime? _verificationExpiresAt;
   DateTime? _verificationResendAvailableAt;
   final List<VerificationDocumentUpload> _verificationDocuments = [];
@@ -100,6 +102,11 @@ class _AuthScreenState extends State<AuthScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _pushMessageSubscription = PushNotificationService
+        .instance
+        .foregroundMessages
+        .listen(_handleForegroundPush);
     SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
     _skyController = AnimationController(
       vsync: this,
@@ -231,6 +238,8 @@ class _AuthScreenState extends State<AuthScreen>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _pushMessageSubscription?.cancel();
     _draftTimer?.cancel();
     _skyController.dispose();
     _controller.dispose();
@@ -253,6 +262,31 @@ class _AuthScreenState extends State<AuthScreen>
     _verificationResponseController.dispose();
     _verificationTimer?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_refreshBackendProfile());
+    }
+  }
+
+  void _handleForegroundPush(RemoteMessage message) {
+    final type = message.data['type'];
+    if (type == 'VERIFICATION_DECISION' || type == 'VERIFICATION_REQUESTED') {
+      unawaited(_refreshBackendProfile());
+    }
+  }
+
+  Future<void> _refreshBackendProfile() async {
+    if (_authService.currentUser == null) return;
+    try {
+      final profile = await _backend.session();
+      if (!mounted) return;
+      setState(() => _restoreBackendProfile(profile));
+    } catch (_) {
+      // Keep the current screen stable; the next resume or request retries.
+    }
   }
 
   Future<void> _runAuthentication(

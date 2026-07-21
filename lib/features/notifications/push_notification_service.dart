@@ -18,11 +18,14 @@ class PushNotificationService {
   final _backend = BackendService();
   final _installationStore = DeviceInstallationStore();
   final _deviceInfo = DeviceInfoPlugin();
+  final _foregroundMessages = StreamController<RemoteMessage>.broadcast();
   StreamSubscription<User?>? _authSubscription;
   StreamSubscription<String>? _tokenSubscription;
   StreamSubscription<RemoteMessage>? _messageSubscription;
   GlobalKey<ScaffoldMessengerState>? _messengerKey;
   String? _registeredToken;
+
+  Stream<RemoteMessage> get foregroundMessages => _foregroundMessages.stream;
 
   void initialize(GlobalKey<ScaffoldMessengerState> messengerKey) {
     _messengerKey = messengerKey;
@@ -85,6 +88,7 @@ class PushNotificationService {
   }
 
   void _showForegroundMessage(RemoteMessage message) {
+    _foregroundMessages.add(message);
     final title = message.notification?.title ?? 'FRSH update';
     final body = message.notification?.body;
     _messengerKey?.currentState
