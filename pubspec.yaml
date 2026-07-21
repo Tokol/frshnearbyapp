@@ -47,6 +47,7 @@ dependencies:
   # Pinned as a compatible FlutterFire pair for Flutter 3.29.x.
   firebase_core: 4.4.0
   firebase_auth: 6.1.4
+  firebase_messaging: ^16.1.1
   google_sign_in: ^7.2.0
   file_picker: 8.3.7
   # 1.2+ requires a newer Flutter SDK; 1.1.2 supports Flutter 3.29.

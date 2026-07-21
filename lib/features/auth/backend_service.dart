@@ -9,6 +9,7 @@ class BackendUser {
     required this.onboardingStep,
     required this.verificationStatus,
     required this.roles,
+    this.latestVerificationRequestTitle,
     this.latestVerificationMessage,
     this.latestVerificationRequestedDocuments = const [],
     this.latestVerificationRequiresTextResponse = false,
@@ -29,6 +30,7 @@ class BackendUser {
   final String onboardingStep;
   final String verificationStatus;
   final List<String> roles;
+  final String? latestVerificationRequestTitle;
   final String? latestVerificationMessage;
   final List<String> latestVerificationRequestedDocuments;
   final bool latestVerificationRequiresTextResponse;
@@ -50,6 +52,8 @@ class BackendUser {
     onboardingStep: json['onboardingStep'] as String,
     verificationStatus: json['verificationStatus'] as String,
     roles: (json['roles'] as List<dynamic>).cast<String>(),
+    latestVerificationRequestTitle:
+        json['latestVerificationRequestTitle'] as String?,
     latestVerificationMessage: json['latestVerificationMessage'] as String?,
     latestVerificationRequestedDocuments:
         (json['latestVerificationRequestedDocuments'] as List<dynamic>? ?? [])
@@ -229,7 +233,7 @@ class BackendService {
 
   Future<BackendUser> session() async {
     final data = await _gql(
-      'query { session { user { onboardingStep verificationStatus latestVerificationMessage latestVerificationRequestedDocuments latestVerificationRequiresTextResponse roles displayName phone photoUrl dateOfBirth addressLine addressUnit city postalCode country latitude longitude producerProfile { publicName description productionType address city postalCode country } businessProfile { publicDisplayName legalBusinessName farmName businessId vatNumber businessType businessAddress city postalCode country logoUrl } } } }',
+      'query { session { user { onboardingStep verificationStatus latestVerificationRequestTitle latestVerificationMessage latestVerificationRequestedDocuments latestVerificationRequiresTextResponse roles displayName phone photoUrl dateOfBirth addressLine addressUnit city postalCode country latitude longitude producerProfile { publicName description productionType address city postalCode country } businessProfile { publicDisplayName legalBusinessName farmName businessId vatNumber businessType businessAddress city postalCode country logoUrl } } } }',
     );
     return BackendUser.fromJson(
       (data['session'] as Map<String, dynamic>)['user'] as Map<String, dynamic>,
@@ -342,6 +346,22 @@ class BackendService {
   Future<void> confirmLocation(ConfirmedLocation location) => _gql(
     'mutation(\$input: ConfirmLocationInput!) { confirmLocation(input: \$input) { id } }',
     {'input': location.toJson()},
+  );
+
+  Future<void> registerPushInstallation({
+    required String token,
+    required String platform,
+    required String locale,
+  }) => _gql(
+    'mutation(\$input: PushInstallationInput!) { registerPushInstallation(input: \$input) }',
+    {
+      'input': {'token': token, 'platform': platform, 'locale': locale},
+    },
+  );
+
+  Future<void> unregisterPushInstallation(String token) => _gql(
+    'mutation(\$token: String!) { unregisterPushInstallation(token: \$token) }',
+    {'token': token},
   );
 
   Future<void> finish({

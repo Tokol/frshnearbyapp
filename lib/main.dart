@@ -4,6 +4,8 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'features/auth/auth_screen.dart';
+import 'features/auth/app_preferences_store.dart';
+import 'features/notifications/push_notification_service.dart';
 import 'firebase_options.dart';
 import 'l10n/app_localizations.dart';
 
@@ -13,8 +15,36 @@ Future<void> main() async {
   runApp(const FrshNearbyApp());
 }
 
-class FrshNearbyApp extends StatelessWidget {
+class FrshNearbyApp extends StatefulWidget {
   const FrshNearbyApp({super.key});
+
+  @override
+  State<FrshNearbyApp> createState() => _FrshNearbyAppState();
+}
+
+class _FrshNearbyAppState extends State<FrshNearbyApp> {
+  final _preferences = AppPreferencesStore();
+  final _messengerKey = GlobalKey<ScaffoldMessengerState>();
+  Locale? _preferredLocale;
+
+  @override
+  void initState() {
+    super.initState();
+    PushNotificationService.instance.initialize(_messengerKey);
+    _loadLanguage();
+  }
+
+  Future<void> _loadLanguage() async {
+    final language = await _preferences.language();
+    if (mounted && language != null) {
+      setState(() => _preferredLocale = Locale(language));
+    }
+  }
+
+  Future<void> _setLanguage(String languageCode) async {
+    await _preferences.setLanguage(languageCode);
+    if (mounted) setState(() => _preferredLocale = Locale(languageCode));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -34,8 +64,10 @@ class FrshNearbyApp extends StatelessWidget {
         );
 
     return MaterialApp(
+      scaffoldMessengerKey: _messengerKey,
       debugShowCheckedModeBanner: false,
       onGenerateTitle: (context) => AppLocalizations.of(context)!.appTitle,
+      locale: _preferredLocale,
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
@@ -56,7 +88,9 @@ class FrshNearbyApp extends StatelessWidget {
           behavior: SnackBarBehavior.floating,
           backgroundColor: ink,
           contentTextStyle: GoogleFonts.inter(color: cream, fontSize: 13.5),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
@@ -90,13 +124,22 @@ class FrshNearbyApp extends StatelessWidget {
         }
         return const Locale('en');
       },
-      home: const _ResponsiveAuthPreview(),
+      home: _ResponsiveAuthPreview(
+        selectedLanguageCode: _preferredLocale?.languageCode,
+        onLanguageChanged: _setLanguage,
+      ),
     );
   }
 }
 
 class _ResponsiveAuthPreview extends StatelessWidget {
-  const _ResponsiveAuthPreview();
+  const _ResponsiveAuthPreview({
+    required this.selectedLanguageCode,
+    required this.onLanguageChanged,
+  });
+
+  final String? selectedLanguageCode;
+  final ValueChanged<String> onLanguageChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -104,7 +147,12 @@ class _ResponsiveAuthPreview extends StatelessWidget {
       builder: (context, constraints) {
         // On a desktop-sized browser, present the app inside a phone-sized
         // preview. Phones and narrow browser windows keep the native full view.
-        if (constraints.maxWidth < 800) return const AuthScreen();
+        if (constraints.maxWidth < 800) {
+          return AuthScreen(
+            selectedLanguageCode: selectedLanguageCode,
+            onLanguageChanged: onLanguageChanged,
+          );
+        }
 
         final phoneHeight = (constraints.maxHeight - 64).clamp(640.0, 860.0);
         return Scaffold(
@@ -135,7 +183,10 @@ class _ResponsiveAuthPreview extends StatelessWidget {
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(32),
-                  child: const AuthScreen(),
+                  child: AuthScreen(
+                    selectedLanguageCode: selectedLanguageCode,
+                    onLanguageChanged: onLanguageChanged,
+                  ),
                 ),
               ),
             ),

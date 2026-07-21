@@ -1,10 +1,11 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:dio/dio.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 
 import 'backend_service.dart';
+import '../../l10n/localized_text.dart';
 
 class LocationSheet extends StatefulWidget {
   const LocationSheet({required this.isBusiness, super.key});
@@ -415,18 +416,30 @@ class _LocationSheetState extends State<LocationSheet> {
               const SizedBox(height: 14),
               TextFormField(
                 controller: _address,
-                decoration: const InputDecoration(
-                  labelText: 'Street address and number *',
-                  hintText: 'For example: Market Street 12',
+                decoration: InputDecoration(
+                  labelText: localizeText(
+                    context,
+                    'Street address and number *',
+                  ),
+                  hintText: localizeText(
+                    context,
+                    'For example: Market Street 12',
+                  ),
                 ),
                 validator: _required,
               ),
               const SizedBox(height: 10),
               TextFormField(
                 controller: _addressUnit,
-                decoration: const InputDecoration(
-                  labelText: 'Building, block, unit or floor',
-                  hintText: 'For example: Building B, unit 4',
+                decoration: InputDecoration(
+                  labelText: localizeText(
+                    context,
+                    'Building, block, unit or floor',
+                  ),
+                  hintText: localizeText(
+                    context,
+                    'For example: Building B, unit 4',
+                  ),
                   prefixIcon: Icon(Icons.apartment_outlined),
                 ),
               ),
@@ -443,8 +456,8 @@ class _LocationSheetState extends State<LocationSheet> {
                   Expanded(
                     child: TextFormField(
                       controller: _postal,
-                      decoration: const InputDecoration(
-                        labelText: 'Postal code *',
+                      decoration: InputDecoration(
+                        labelText: localizeText(context, 'Postal code *'),
                       ),
                       validator: _required,
                     ),
@@ -453,7 +466,9 @@ class _LocationSheetState extends State<LocationSheet> {
                   Expanded(
                     child: TextFormField(
                       controller: _city,
-                      decoration: const InputDecoration(labelText: 'City *'),
+                      decoration: InputDecoration(
+                        labelText: localizeText(context, 'City *'),
+                      ),
                       validator: _required,
                     ),
                   ),
@@ -462,7 +477,9 @@ class _LocationSheetState extends State<LocationSheet> {
               const SizedBox(height: 10),
               TextFormField(
                 controller: _country,
-                decoration: const InputDecoration(labelText: 'Country *'),
+                decoration: InputDecoration(
+                  labelText: localizeText(context, 'Country *'),
+                ),
                 validator: _required,
               ),
               const SizedBox(height: 18),
@@ -480,6 +497,8 @@ class _LocationSheetState extends State<LocationSheet> {
     ),
   );
 
-  static String? _required(String? value) =>
-      value == null || value.trim().isEmpty ? 'Required' : null;
+  String? _required(String? value) =>
+      value == null || value.trim().isEmpty
+          ? localizeText(context, 'Required')
+          : null;
 }

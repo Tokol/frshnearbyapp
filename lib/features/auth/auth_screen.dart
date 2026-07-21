@@ -3,17 +3,21 @@ import 'dart:async';
 import 'package:country_picker/country_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../notifications/push_notification_service.dart';
+
 import 'auth_service.dart';
 import 'backend_service.dart';
 import 'location_sheet.dart';
+import '../../l10n/localized_text.dart';
 import 'onboarding_progress_store.dart';
 import 'onboarding_draft_store.dart';
+import 'app_preferences_store.dart';
 
 const _green = Color(0xFF2F6B45);
 const _deepGreen = Color(0xFF1C4630);
@@ -27,7 +31,14 @@ const _field = Color(0xFFF3F2EA);
 enum _AccountType { consumer, producer, business }
 
 class AuthScreen extends StatefulWidget {
-  const AuthScreen({super.key});
+  const AuthScreen({
+    required this.selectedLanguageCode,
+    required this.onLanguageChanged,
+    super.key,
+  });
+
+  final String? selectedLanguageCode;
+  final ValueChanged<String> onLanguageChanged;
 
   @override
   State<AuthScreen> createState() => _AuthScreenState();
@@ -72,6 +83,7 @@ class _AuthScreenState extends State<AuthScreen>
   ConfirmedLocation? _confirmedLocation;
   String? _businessType;
   String _verificationStatus = 'NOT_REQUIRED';
+  String? _verificationRequestTitle;
   String? _verificationMessage;
   List<String> _requestedVerificationDocuments = [];
   bool _verificationRequiresTextResponse = false;
@@ -272,9 +284,9 @@ class _AuthScreenState extends State<AuthScreen>
       // Closing a provider dialog is an intentional action, not an error.
     } on FirebaseAuthException catch (error) {
       if (mounted) _showAuthError(_authMessage(error));
-    } catch (_) {
+    } catch (error) {
       if (mounted) {
-        _showAuthError('Sign-in could not be completed. Please try again.');
+        _showAuthError(_serverMessage(error));
       }
     } finally {
       if (mounted) setState(() => _authBusy = false);
@@ -394,6 +406,7 @@ class _AuthScreenState extends State<AuthScreen>
     }
     _socialPhotoUrl = profile.photoUrl ?? _socialPhotoUrl;
     _verificationStatus = profile.verificationStatus;
+    _verificationRequestTitle = profile.latestVerificationRequestTitle;
     _verificationMessage = profile.latestVerificationMessage;
     _requestedVerificationDocuments =
         profile.latestVerificationRequestedDocuments;
@@ -458,6 +471,7 @@ class _AuthScreenState extends State<AuthScreen>
   }
 
   Future<void> _changeVerificationEmail() async {
+    await PushNotificationService.instance.unregisterCurrentDevice();
     await _authService.signOut();
     _passwordController.clear();
     _confirmPasswordController.clear();
@@ -643,8 +657,8 @@ class _AuthScreenState extends State<AuthScreen>
     }
   }
 
-  Future<void> _submitSellerVerification() async {
-    if (_sellerType == null || _authBusy) return;
+  Future<bool> _submitSellerVerification() async {
+    if (_sellerType == null || _authBusy) return false;
     final requested = _requestedVerificationDocuments.toSet();
     final isChangeRequest = _verificationStatus == 'NEEDS_CHANGES';
     final requiredKinds =
@@ -658,18 +672,18 @@ class _AuthScreenState extends State<AuthScreen>
     for (final kind in requiredKinds) {
       if (!_verificationDocuments.any((document) => document.kind == kind)) {
         _showAuthError('Upload ${_documentKindLabel(kind).toLowerCase()}.');
-        return;
+        return false;
       }
     }
     if (isChangeRequest &&
         _verificationRequiresTextResponse &&
         _verificationResponseController.text.trim().length < 2) {
       _showAuthError('Add a written response before submitting.');
-      return;
+      return false;
     }
     if (!_verificationConfirmed) {
       _showAuthError('Confirm your details before submitting.');
-      return;
+      return false;
     }
     setState(() => _authBusy = true);
     try {
@@ -685,7 +699,7 @@ class _AuthScreenState extends State<AuthScreen>
         documents: submissionDocuments,
         responseMessage: _verificationResponseController.text,
       );
-      if (!mounted) return;
+      if (!mounted) return false;
       setState(() {
         _verificationStatus = 'SUBMITTED';
         _verificationMessage = null;
@@ -699,11 +713,38 @@ class _AuthScreenState extends State<AuthScreen>
           content: Text('Your verification request was sent for review.'),
         ),
       );
+      return true;
     } catch (error) {
       if (mounted) _showAuthError(_serverMessage(error));
+      return false;
     } finally {
       if (mounted) setState(() => _authBusy = false);
     }
+  }
+
+  Future<void> _openSellerVerification() async {
+    if (_sellerType == null) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder:
+            (_) => _SellerVerificationScreen(
+              type: _sellerType!,
+              status: _verificationStatus,
+              requestTitle: _verificationRequestTitle,
+              adminMessage: _verificationMessage,
+              requestedDocuments: _requestedVerificationDocuments,
+              requiresTextResponse: _verificationRequiresTextResponse,
+              responseController: _verificationResponseController,
+              documents: _verificationDocuments,
+              initiallyConfirmed: _verificationConfirmed,
+              onAddDocument: _addVerificationDocument,
+              onRemoveDocument: _removeVerificationDocument,
+              onConfirmed:
+                  (value) => setState(() => _verificationConfirmed = value),
+              onSubmit: _submitSellerVerification,
+            ),
+      ),
+    );
   }
 
   String _documentKindLabel(String kind) => switch (kind) {
@@ -765,6 +806,7 @@ class _AuthScreenState extends State<AuthScreen>
   }
 
   Future<void> _signOutToWelcome() async {
+    await PushNotificationService.instance.unregisterCurrentDevice();
     await _authService.signOut();
     if (mounted) _goTo(0);
   }
@@ -935,6 +977,29 @@ class _AuthScreenState extends State<AuthScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (_page == 8) {
+      return _MainAppShell(
+        type: _effectiveType,
+        isConsumer: _isConsumer,
+        fullName: _fullNameController.text.trim(),
+        email: _emailController.text.trim(),
+        phone: _phoneController.text.trim(),
+        photoUrl: _socialPhotoUrl,
+        publicName: _displayNameController.text.trim(),
+        businessName: _businessNameController.text.trim(),
+        location: _confirmedLocation,
+        verificationStatus: _verificationStatus,
+        verificationRequestTitle: _verificationRequestTitle,
+        verificationMessage: _verificationMessage,
+        selectedLanguageCode: widget.selectedLanguageCode,
+        onLanguageChanged: widget.onLanguageChanged,
+        onOpenVerification: _openSellerVerification,
+        onEditProfile: () => _goTo(3),
+        onEditBusiness:
+            _sellerType == _AccountType.business ? () => _goTo(4) : null,
+        onSignOut: _signOutToWelcome,
+      );
+    }
     return Scaffold(
       backgroundColor: const Color(0xFF0F231A),
       body: Stack(
@@ -1448,12 +1513,14 @@ class _EmailPage extends StatelessWidget {
             controller: emailController,
             enabled: !loading,
             keyboardType: TextInputType.emailAddress,
-            decoration: const InputDecoration(labelText: 'Email address'),
+            decoration: InputDecoration(
+              labelText: localizeText(context, 'Email address'),
+            ),
             validator:
                 (value) =>
                     value != null && value.contains('@')
                         ? null
-                        : 'Enter a valid email address.',
+                        : localizeText(context, 'Enter a valid email address.'),
           ),
           const SizedBox(height: 12),
           TextFormField(
@@ -1461,7 +1528,7 @@ class _EmailPage extends StatelessWidget {
             enabled: !loading,
             obscureText: hidePassword,
             decoration: InputDecoration(
-              labelText: 'Password',
+              labelText: localizeText(context, 'Password'),
               suffixIcon: IconButton(
                 onPressed: onTogglePassword,
                 icon: Icon(
@@ -1475,7 +1542,7 @@ class _EmailPage extends StatelessWidget {
                 (value) =>
                     (value?.length ?? 0) >= 8
                         ? null
-                        : 'Use at least 8 characters.',
+                        : localizeText(context, 'Use at least 8 characters.'),
           ),
           if (registering) ...[
             const SizedBox(height: 12),
@@ -1483,12 +1550,14 @@ class _EmailPage extends StatelessWidget {
               controller: confirmPasswordController,
               enabled: !loading,
               obscureText: hidePassword,
-              decoration: const InputDecoration(labelText: 'Confirm password'),
+              decoration: InputDecoration(
+                labelText: localizeText(context, 'Confirm password'),
+              ),
               validator:
                   (value) =>
                       value == passwordController.text
                           ? null
-                          : 'Passwords do not match.',
+                          : localizeText(context, 'Passwords do not match.'),
             ),
           ],
           if (!registering)
@@ -1669,8 +1738,8 @@ class _EmailVerificationPage extends StatelessWidget {
             letterSpacing: 10,
             color: _ink,
           ),
-          decoration: const InputDecoration(
-            labelText: 'Verification code',
+          decoration: InputDecoration(
+            labelText: localizeText(context, 'Verification code'),
             counterText: '',
           ),
         ),
@@ -1769,8 +1838,8 @@ class _DetailsPage extends StatelessWidget {
             _RequiredField(label: 'Full name', controller: fullNameController),
             const SizedBox(height: 12),
             InputDecorator(
-              decoration: const InputDecoration(
-                labelText: 'Verified email address',
+              decoration: InputDecoration(
+                labelText: localizeText(context, 'Verified email address'),
                 suffixIcon: Icon(
                   Icons.verified_outlined,
                   color: _green,
@@ -1783,9 +1852,9 @@ class _DetailsPage extends StatelessWidget {
             TextFormField(
               controller: dateOfBirthController,
               readOnly: true,
-              decoration: const InputDecoration(
-                labelText: 'Date of birth *',
-                hintText: 'Select date',
+              decoration: InputDecoration(
+                labelText: localizeText(context, 'Date of birth *'),
+                hintText: localizeText(context, 'Select date'),
                 suffixIcon: Icon(
                   Icons.calendar_today_outlined,
                   color: _muted,
@@ -1810,7 +1879,7 @@ class _DetailsPage extends StatelessWidget {
               validator:
                   (value) =>
                       value == null || value.isEmpty
-                          ? 'Select your date of birth.'
+                          ? localizeText(context, 'Select your date of birth.')
                           : null,
             ),
             const SizedBox(height: 12),
@@ -1823,9 +1892,9 @@ class _DetailsPage extends StatelessWidget {
               TextFormField(
                 controller: introController,
                 maxLines: 2,
-                decoration: const InputDecoration(
-                  labelText: 'Short introduction',
-                  hintText: 'What do you make or grow?',
+                decoration: InputDecoration(
+                  labelText: localizeText(context, 'Short introduction'),
+                  hintText: localizeText(context, 'What do you make or grow?'),
                 ),
               ),
               const SizedBox(height: 12),
@@ -1888,7 +1957,9 @@ class _BusinessPage extends StatelessWidget {
           const SizedBox(height: 12),
           TextFormField(
             controller: farmNameController,
-            decoration: const InputDecoration(labelText: 'Farm name'),
+            decoration: InputDecoration(
+              labelText: localizeText(context, 'Farm name'),
+            ),
           ),
           const SizedBox(height: 12),
           Row(
@@ -1903,7 +1974,9 @@ class _BusinessPage extends StatelessWidget {
               Expanded(
                 child: TextFormField(
                   controller: vatController,
-                  decoration: const InputDecoration(labelText: 'VAT number'),
+                  decoration: InputDecoration(
+                    labelText: localizeText(context, 'VAT number'),
+                  ),
                 ),
               ),
             ],
@@ -1911,7 +1984,9 @@ class _BusinessPage extends StatelessWidget {
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
             value: businessType,
-            decoration: const InputDecoration(labelText: 'Business type *'),
+            decoration: InputDecoration(
+              labelText: localizeText(context, 'Business type *'),
+            ),
             items: const [
               DropdownMenuItem(value: 'farm', child: Text('Farm')),
               DropdownMenuItem(value: 'food', child: Text('Food producer')),
@@ -1920,7 +1995,10 @@ class _BusinessPage extends StatelessWidget {
             ],
             onChanged: onBusinessType,
             validator:
-                (value) => value == null ? 'Select a business type.' : null,
+                (value) =>
+                    value == null
+                        ? localizeText(context, 'Select a business type.')
+                        : null,
           ),
           const SizedBox(height: 12),
           _RequiredField(
@@ -2208,6 +2286,1401 @@ class _CheckPainter extends CustomPainter {
       oldDelegate.progress != progress;
 }
 
+class _MainAppShell extends StatefulWidget {
+  const _MainAppShell({
+    required this.type,
+    required this.isConsumer,
+    required this.fullName,
+    required this.email,
+    required this.phone,
+    required this.photoUrl,
+    required this.publicName,
+    required this.businessName,
+    required this.location,
+    required this.verificationStatus,
+    required this.verificationRequestTitle,
+    required this.verificationMessage,
+    required this.selectedLanguageCode,
+    required this.onLanguageChanged,
+    required this.onOpenVerification,
+    required this.onEditProfile,
+    required this.onEditBusiness,
+    required this.onSignOut,
+  });
+
+  final _AccountType type;
+  final bool isConsumer;
+  final String fullName;
+  final String email;
+  final String phone;
+  final String? photoUrl;
+  final String publicName;
+  final String businessName;
+  final ConfirmedLocation? location;
+  final String verificationStatus;
+  final String? verificationRequestTitle;
+  final String? verificationMessage;
+  final String? selectedLanguageCode;
+  final ValueChanged<String> onLanguageChanged;
+  final VoidCallback onOpenVerification;
+  final VoidCallback onEditProfile;
+  final VoidCallback? onEditBusiness;
+  final VoidCallback onSignOut;
+
+  @override
+  State<_MainAppShell> createState() => _MainAppShellState();
+}
+
+class _MainAppShellState extends State<_MainAppShell> {
+  int _index = 0;
+  final _preferences = AppPreferencesStore();
+  late _AccountType _activeType = widget.type;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAccountMode();
+  }
+
+  Future<void> _loadAccountMode() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    final mode = await _preferences.accountMode(uid);
+    if (!mounted || mode == null) return;
+    setState(() {
+      _activeType = switch (mode) {
+        'consumer' => _AccountType.consumer,
+        'seller' => widget.type,
+        _ => widget.type,
+      };
+    });
+  }
+
+  Future<void> _setAccountType(_AccountType type) async {
+    if (_activeType == type) return;
+    setState(() {
+      _activeType = type;
+      _index = 0;
+    });
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      await _preferences.setAccountMode(
+        uid,
+        type == _AccountType.consumer ? 'consumer' : 'seller',
+      );
+    }
+  }
+
+  Future<void> _openSettings() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder:
+            (_) => _SettingsScreen(
+              selectedLanguageCode: widget.selectedLanguageCode,
+              onLanguageChanged: widget.onLanguageChanged,
+              activeType: _activeType,
+              sellerType: widget.type,
+              canSwitchAccount:
+                  widget.isConsumer && widget.type != _AccountType.consumer,
+              onAccountTypeChanged: _setAccountType,
+            ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isConsumerMode = _activeType == _AccountType.consumer;
+    final pages =
+        isConsumerMode
+            ? <Widget>[
+              _ConsumerDashboardPage(fullName: widget.fullName),
+              const _FutureTab(
+                icon: Icons.storefront_outlined,
+                title: 'Your local marketplace is coming next',
+              ),
+              _ConsumerProfilePage(
+                fullName: widget.fullName,
+                email: widget.email,
+                phone: widget.phone,
+                photoUrl: widget.photoUrl,
+                onEditProfile: widget.onEditProfile,
+                onOpenSettings: _openSettings,
+                onSignOut: widget.onSignOut,
+              ),
+            ]
+            : <Widget>[
+              _SellerDashboardPage(
+                type: _activeType,
+                fullName: widget.fullName,
+                publicName: widget.publicName,
+                businessName: widget.businessName,
+                location: widget.location,
+                verificationStatus: widget.verificationStatus,
+              ),
+              const _FutureTab(
+                icon: Icons.receipt_long_outlined,
+                title: 'Seller orders are coming next',
+              ),
+              _RevampedProfilePage(
+                type: _activeType,
+                isConsumer: widget.isConsumer,
+                fullName: widget.fullName,
+                email: widget.email,
+                phone: widget.phone,
+                photoUrl: widget.photoUrl,
+                publicName: widget.publicName,
+                businessName: widget.businessName,
+                location: widget.location,
+                verificationStatus: widget.verificationStatus,
+                onEditProfile: widget.onEditProfile,
+                onOpenSettings: _openSettings,
+                onEditBusiness: widget.onEditBusiness,
+                onSignOut: widget.onSignOut,
+              ),
+            ];
+    final destinations =
+        isConsumerMode
+            ? [
+              NavigationDestination(
+                icon: const Icon(Icons.home_outlined),
+                selectedIcon: const Icon(Icons.home_rounded),
+                label: localizeText(context, 'Home'),
+              ),
+              NavigationDestination(
+                icon: const Icon(Icons.storefront_outlined),
+                selectedIcon: const Icon(Icons.storefront_rounded),
+                label: localizeText(context, 'Market'),
+              ),
+              NavigationDestination(
+                icon: const Icon(Icons.person_outline_rounded),
+                selectedIcon: const Icon(Icons.person_rounded),
+                label: localizeText(context, 'Profile'),
+              ),
+            ]
+            : [
+              NavigationDestination(
+                icon: const Icon(Icons.dashboard_outlined),
+                selectedIcon: const Icon(Icons.dashboard_rounded),
+                label: localizeText(context, 'Dashboard'),
+              ),
+              NavigationDestination(
+                icon: const Icon(Icons.receipt_long_outlined),
+                selectedIcon: const Icon(Icons.receipt_long_rounded),
+                label: localizeText(context, 'Orders'),
+              ),
+              NavigationDestination(
+                icon: const Icon(Icons.person_outline_rounded),
+                selectedIcon: const Icon(Icons.person_rounded),
+                label: localizeText(context, 'Profile'),
+              ),
+            ];
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 360),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      transitionBuilder:
+          (child, animation) => FadeTransition(
+            opacity: animation,
+            child: SlideTransition(
+              position: Tween(
+                begin: const Offset(.035, 0),
+                end: Offset.zero,
+              ).animate(animation),
+              child: child,
+            ),
+          ),
+      child: Scaffold(
+        key: ValueKey(isConsumerMode),
+        backgroundColor: _cream,
+        body: SafeArea(
+          bottom: false,
+          child: Column(
+            children: [
+              if (!isConsumerMode && widget.verificationStatus != 'VERIFIED')
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
+                  child: _VerificationBanner(
+                    status: widget.verificationStatus,
+                    requestTitle: widget.verificationRequestTitle,
+                    message: widget.verificationMessage,
+                    onTap:
+                        widget.verificationStatus == 'SUBMITTED' ||
+                                widget.verificationStatus == 'IN_REVIEW'
+                            ? null
+                            : widget.onOpenVerification,
+                    compact: true,
+                  ),
+                ),
+              Expanded(child: IndexedStack(index: _index, children: pages)),
+            ],
+          ),
+        ),
+        bottomNavigationBar: NavigationBar(
+          selectedIndex: _index,
+          onDestinationSelected: (value) => setState(() => _index = value),
+          backgroundColor: Colors.white,
+          indicatorColor: const Color(0xFFDCEBD7),
+          destinations: destinations,
+        ),
+      ),
+    );
+  }
+}
+
+class _ConsumerDashboardPage extends StatelessWidget {
+  const _ConsumerDashboardPage({required this.fullName});
+  final String fullName;
+
+  @override
+  Widget build(BuildContext context) {
+    final firstName =
+        fullName.trim().isEmpty ? 'there' : fullName.trim().split(' ').first;
+    return ColoredBox(
+      color: const Color(0xFFFFFAF0),
+      child: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(18, 22, 18, 30),
+          children: [
+            Text(
+              'Hello, $firstName',
+              style: const TextStyle(
+                color: _muted,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Fresh food near you',
+              style: GoogleFonts.fraunces(
+                fontSize: 34,
+                height: 1.05,
+                fontWeight: FontWeight.w700,
+                color: _ink,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.all(22),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF194D35), Color(0xFF2E7350)],
+                ),
+                borderRadius: BorderRadius.circular(26),
+              ),
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.location_on_outlined, color: Color(0xFFFFD979)),
+                  SizedBox(height: 22),
+                  Text(
+                    'Discover local producers',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 21,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  SizedBox(height: 6),
+                  Text(
+                    'Seasonal food and small businesses, close to home.',
+                    style: TextStyle(color: Color(0xFFDDEAE3), height: 1.4),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text('Browse by category', style: _title),
+            const SizedBox(height: 12),
+            const Wrap(
+              spacing: 9,
+              runSpacing: 9,
+              children: [
+                _CategoryChip(icon: Icons.eco_outlined, label: 'Vegetables'),
+                _CategoryChip(
+                  icon: Icons.bakery_dining_outlined,
+                  label: 'Bakery',
+                ),
+                _CategoryChip(icon: Icons.egg_outlined, label: 'Eggs & dairy'),
+              ],
+            ),
+            const SizedBox(height: 26),
+            const _EmptyDashboardCard(
+              icon: Icons.storefront_outlined,
+              title: 'Nearby sellers',
+              body:
+                  'Local sellers and their products will appear here as the marketplace opens.',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SellerDashboardPage extends StatelessWidget {
+  const _SellerDashboardPage({
+    required this.type,
+    required this.fullName,
+    required this.publicName,
+    required this.businessName,
+    required this.location,
+    required this.verificationStatus,
+  });
+  final _AccountType type;
+  final String fullName;
+  final String publicName;
+  final String businessName;
+  final ConfirmedLocation? location;
+  final String verificationStatus;
+
+  String get displayName =>
+      type == _AccountType.business && businessName.isNotEmpty
+          ? businessName
+          : publicName.isNotEmpty
+          ? publicName
+          : (fullName.isEmpty ? 'Your business' : fullName);
+
+  @override
+  Widget build(BuildContext context) => ColoredBox(
+    color: const Color(0xFFF1F6ED),
+    child: SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(18, 20, 18, 30),
+        children: [
+          const Text(
+            'SELLER WORKSPACE',
+            style: TextStyle(
+              color: _green,
+              fontSize: 12,
+              letterSpacing: 1.7,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  displayName,
+                  style: GoogleFonts.fraunces(
+                    fontSize: 32,
+                    height: 1.05,
+                    fontWeight: FontWeight.w700,
+                    color: _ink,
+                  ),
+                ),
+              ),
+              if (verificationStatus == 'VERIFIED')
+                const Icon(Icons.verified_rounded, color: _green, size: 26),
+            ],
+          ),
+          if (location != null) ...[
+            const SizedBox(height: 7),
+            Text(
+              location!.formattedAddress,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: _muted),
+            ),
+          ],
+          const SizedBox(height: 24),
+          const Row(
+            children: [
+              Expanded(
+                child: _MetricCard(
+                  label: 'Active orders',
+                  value: '—',
+                  icon: Icons.receipt_long_outlined,
+                ),
+              ),
+              SizedBox(width: 12),
+              Expanded(
+                child: _MetricCard(
+                  label: 'This month',
+                  value: '—',
+                  icon: Icons.trending_up_rounded,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          Text('Quick actions', style: _title),
+          const SizedBox(height: 12),
+          const _EmptyDashboardCard(
+            icon: Icons.inventory_2_outlined,
+            title: 'Start selling locally',
+            body:
+                'Products, inventory, and incoming orders will live in this seller workspace.',
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _ConsumerProfilePage extends StatelessWidget {
+  const _ConsumerProfilePage({
+    required this.fullName,
+    required this.email,
+    required this.phone,
+    required this.photoUrl,
+    required this.onEditProfile,
+    required this.onOpenSettings,
+    required this.onSignOut,
+  });
+  final String fullName;
+  final String email;
+  final String phone;
+  final String? photoUrl;
+  final VoidCallback onEditProfile;
+  final VoidCallback onOpenSettings;
+  final VoidCallback onSignOut;
+
+  @override
+  Widget build(BuildContext context) => ColoredBox(
+    color: const Color(0xFFFFFAF0),
+    child: SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(18, 12, 18, 30),
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'My profile',
+                  style: GoogleFonts.fraunces(
+                    fontSize: 30,
+                    fontWeight: FontWeight.w700,
+                    color: _ink,
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: localizeText(context, 'Settings'),
+                onPressed: onOpenSettings,
+                icon: const Icon(Icons.settings_outlined),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: const Color(0xFFF0E5CD)),
+            ),
+            child: Column(
+              children: [
+                CircleAvatar(
+                  radius: 39,
+                  backgroundColor: const Color(0xFFFFE7A8),
+                  backgroundImage:
+                      photoUrl?.isNotEmpty == true
+                          ? NetworkImage(photoUrl!)
+                          : null,
+                  child:
+                      photoUrl?.isNotEmpty == true
+                          ? null
+                          : Text(
+                            fullName.isEmpty ? 'F' : fullName[0].toUpperCase(),
+                            style: GoogleFonts.fraunces(
+                              fontSize: 30,
+                              fontWeight: FontWeight.w700,
+                              color: _ink,
+                            ),
+                          ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  fullName.isEmpty ? 'FRSH member' : fullName,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 21,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 7),
+                const Chip(
+                  label: Text('Consumer account'),
+                  avatar: Icon(Icons.shopping_basket_outlined, size: 17),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          _ProfileSection(
+            icon: Icons.person_outline_rounded,
+            title: 'Personal details',
+            lines: [email, phone].where((value) => value.isNotEmpty).toList(),
+            onEdit: onEditProfile,
+          ),
+          const SizedBox(height: 18),
+          OutlinedButton.icon(
+            onPressed: onSignOut,
+            icon: const Icon(Icons.logout_rounded),
+            label: const Text('Sign out'),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 15),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _CategoryChip extends StatelessWidget {
+  const _CategoryChip({required this.icon, required this.label});
+  final IconData icon;
+  final String label;
+  @override
+  Widget build(BuildContext context) => Chip(
+    avatar: Icon(icon, size: 18, color: _green),
+    label: Text(label),
+    backgroundColor: Colors.white,
+    side: const BorderSide(color: Color(0xFFE8DDC6)),
+  );
+}
+
+class _MetricCard extends StatelessWidget {
+  const _MetricCard({
+    required this.label,
+    required this.value,
+    required this.icon,
+  });
+  final String label;
+  final String value;
+  final IconData icon;
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(17),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: _line),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: _green),
+        const SizedBox(height: 16),
+        Text(
+          value,
+          style: const TextStyle(fontSize: 25, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 2),
+        Text(label, style: const TextStyle(color: _muted)),
+      ],
+    ),
+  );
+}
+
+class _EmptyDashboardCard extends StatelessWidget {
+  const _EmptyDashboardCard({
+    required this.icon,
+    required this.title,
+    required this.body,
+  });
+  final IconData icon;
+  final String title;
+  final String body;
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(20),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(22),
+      border: Border.all(color: _line),
+    ),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(11),
+          decoration: BoxDecoration(
+            color: _mist,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Icon(icon, color: _green),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 5),
+              Text(body, style: const TextStyle(color: _muted, height: 1.35)),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _FutureTab extends StatelessWidget {
+  const _FutureTab({required this.icon, required this.title});
+  final IconData icon;
+  final String title;
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+    child: Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 42, color: _green),
+          const SizedBox(height: 12),
+          Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+        ],
+      ),
+    ),
+  );
+}
+
+class _RevampedProfilePage extends StatelessWidget {
+  const _RevampedProfilePage({
+    required this.type,
+    required this.isConsumer,
+    required this.fullName,
+    required this.email,
+    required this.phone,
+    required this.photoUrl,
+    required this.publicName,
+    required this.businessName,
+    required this.location,
+    required this.verificationStatus,
+    required this.onEditProfile,
+    required this.onOpenSettings,
+    required this.onEditBusiness,
+    required this.onSignOut,
+  });
+
+  final _AccountType type;
+  final bool isConsumer;
+  final String fullName;
+  final String email;
+  final String phone;
+  final String? photoUrl;
+  final String publicName;
+  final String businessName;
+  final ConfirmedLocation? location;
+  final String verificationStatus;
+  final VoidCallback onEditProfile;
+  final VoidCallback onOpenSettings;
+  final VoidCallback? onEditBusiness;
+  final VoidCallback onSignOut;
+
+  bool get _isSeller => type != _AccountType.consumer;
+
+  String get _accountLabel => switch (type) {
+    _AccountType.consumer => 'Consumer',
+    _AccountType.producer => 'Side-hustle producer',
+    _AccountType.business => 'Registered business',
+  };
+
+  String get _profileDisplayName {
+    if (type == _AccountType.business && businessName.isNotEmpty) {
+      return businessName;
+    }
+    if (type == _AccountType.producer && publicName.isNotEmpty) {
+      return publicName;
+    }
+    return fullName.isEmpty ? 'FRSH member' : fullName;
+  }
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: const BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [Color(0xFFF2F7EE), _cream],
+        stops: [0, .42],
+      ),
+    ),
+    child: SafeArea(
+      bottom: false,
+      child: CustomScrollView(
+        slivers: [
+          SliverAppBar(
+            pinned: true,
+            automaticallyImplyLeading: false,
+            backgroundColor: const Color(0xFFF2F7EE).withValues(alpha: .95),
+            surfaceTintColor: Colors.transparent,
+            title: Text(
+              'Profile',
+              style: GoogleFonts.fraunces(
+                fontSize: 28,
+                fontWeight: FontWeight.w700,
+                color: _ink,
+              ),
+            ),
+            actions: [
+              IconButton(
+                tooltip: localizeText(context, 'Settings'),
+                onPressed: onOpenSettings,
+                icon: const Icon(Icons.settings_outlined),
+              ),
+              const SizedBox(width: 8),
+            ],
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),
+            sliver: SliverList.list(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x120D2A1B),
+                        blurRadius: 24,
+                        offset: Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 35,
+                        backgroundColor: _mist,
+                        backgroundImage:
+                            photoUrl?.isNotEmpty == true
+                                ? NetworkImage(photoUrl!)
+                                : null,
+                        child:
+                            photoUrl?.isNotEmpty == true
+                                ? null
+                                : Text(
+                                  fullName.isEmpty
+                                      ? 'F'
+                                      : fullName[0].toUpperCase(),
+                                  style: GoogleFonts.fraunces(
+                                    color: _green,
+                                    fontSize: 28,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                      ),
+                      const SizedBox(width: 15),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    _profileDisplayName,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                                if (_isSeller &&
+                                    verificationStatus == 'VERIFIED') ...[
+                                  const SizedBox(width: 6),
+                                  Tooltip(
+                                    message: localizeText(
+                                      context,
+                                      'Verified seller',
+                                    ),
+                                    child: const Icon(
+                                      Icons.verified_rounded,
+                                      size: 21,
+                                      color: _green,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              isConsumer && _isSeller
+                                  ? 'Consumer + $_accountLabel'
+                                  : _accountLabel,
+                              style: const TextStyle(color: _muted),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _ProfileSection(
+                  icon: Icons.person_outline_rounded,
+                  title: 'Account details',
+                  lines:
+                      [
+                        email,
+                        phone,
+                      ].where((value) => value.isNotEmpty).toList(),
+                  onEdit: onEditProfile,
+                ),
+                if (_isSeller) ...[
+                  const SizedBox(height: 12),
+                  _ProfileSection(
+                    icon:
+                        type == _AccountType.business
+                            ? Icons.storefront_outlined
+                            : Icons.spa_outlined,
+                    title:
+                        type == _AccountType.business
+                            ? (businessName.isEmpty
+                                ? 'Business profile'
+                                : businessName)
+                            : (publicName.isEmpty
+                                ? 'Seller profile'
+                                : publicName),
+                    lines: [if (location != null) location!.formattedAddress],
+                    onEdit: onEditBusiness ?? onEditProfile,
+                  ),
+                ],
+                const SizedBox(height: 18),
+                OutlinedButton.icon(
+                  onPressed: onSignOut,
+                  icon: const Icon(Icons.logout_rounded),
+                  label: const Text('Sign out'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 15),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _SettingsScreen extends StatefulWidget {
+  const _SettingsScreen({
+    required this.selectedLanguageCode,
+    required this.onLanguageChanged,
+    required this.activeType,
+    required this.sellerType,
+    required this.canSwitchAccount,
+    required this.onAccountTypeChanged,
+  });
+
+  final String? selectedLanguageCode;
+  final ValueChanged<String> onLanguageChanged;
+  final _AccountType activeType;
+  final _AccountType sellerType;
+  final bool canSwitchAccount;
+  final Future<void> Function(_AccountType type) onAccountTypeChanged;
+
+  @override
+  State<_SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<_SettingsScreen> {
+  late String _languageCode;
+  late _AccountType _activeType = widget.activeType;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _languageCode =
+        widget.selectedLanguageCode ??
+        Localizations.localeOf(context).languageCode;
+  }
+
+  String get _sellerLabel => switch (widget.sellerType) {
+    _AccountType.business => 'Business account',
+    _AccountType.producer => 'Side-hustler account',
+    _AccountType.consumer => 'Consumer account',
+  };
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: _cream,
+    appBar: AppBar(
+      backgroundColor: _cream,
+      surfaceTintColor: Colors.transparent,
+      title: const Text('Settings'),
+    ),
+    body: ListView(
+      padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),
+      children: [
+        Text('Language', style: _title),
+        const SizedBox(height: 6),
+        const Text(
+          'Choose the language used throughout the app.',
+          style: TextStyle(color: _muted),
+        ),
+        const SizedBox(height: 14),
+        _SettingsCard(
+          children: [
+            _LanguageOption(
+              flag: '🇬🇧',
+              title: 'English',
+              value: 'en',
+              groupValue: _languageCode,
+              onChanged: _changeLanguage,
+            ),
+            const Divider(height: 1),
+            _LanguageOption(
+              flag: '🇫🇮',
+              title: 'Finnish',
+              value: 'fi',
+              groupValue: _languageCode,
+              onChanged: _changeLanguage,
+            ),
+            const Divider(height: 1),
+            _LanguageOption(
+              flag: '🇸🇪',
+              title: 'Swedish',
+              value: 'sv',
+              groupValue: _languageCode,
+              onChanged: _changeLanguage,
+            ),
+          ],
+        ),
+        if (widget.canSwitchAccount) ...[
+          const SizedBox(height: 28),
+          Text('Active account', style: _title),
+          const SizedBox(height: 6),
+          const Text(
+            'Switch how you are using FRSH. This does not remove either profile.',
+            style: TextStyle(color: _muted),
+          ),
+          const SizedBox(height: 14),
+          _SettingsCard(
+            children: [
+              _AccountOption(
+                icon: Icons.shopping_basket_outlined,
+                title: 'Consumer account',
+                subtitle: 'Discover and buy local food',
+                selected: _activeType == _AccountType.consumer,
+                onTap: () => _changeAccount(_AccountType.consumer),
+              ),
+              const Divider(height: 1),
+              _AccountOption(
+                icon:
+                    widget.sellerType == _AccountType.business
+                        ? Icons.storefront_outlined
+                        : Icons.spa_outlined,
+                title: _sellerLabel,
+                subtitle:
+                    widget.sellerType == _AccountType.business
+                        ? 'Manage your registered business profile'
+                        : 'Manage your producer profile',
+                selected: _activeType != _AccountType.consumer,
+                onTap: () => _changeAccount(widget.sellerType),
+              ),
+            ],
+          ),
+        ],
+      ],
+    ),
+  );
+
+  void _changeLanguage(String languageCode) {
+    setState(() => _languageCode = languageCode);
+    widget.onLanguageChanged(languageCode);
+  }
+
+  Future<void> _changeAccount(_AccountType type) async {
+    if (_activeType == type) return;
+    setState(() => _activeType = type);
+    Navigator.of(context).pop();
+    await Future<void>.delayed(const Duration(milliseconds: 90));
+    await widget.onAccountTypeChanged(type);
+  }
+}
+
+class _SettingsCard extends StatelessWidget {
+  const _SettingsCard({required this.children});
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    clipBehavior: Clip.antiAlias,
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: _line),
+    ),
+    child: Column(children: children),
+  );
+}
+
+class _LanguageOption extends StatelessWidget {
+  const _LanguageOption({
+    required this.flag,
+    required this.title,
+    required this.value,
+    required this.groupValue,
+    required this.onChanged,
+  });
+  final String flag;
+  final String title;
+  final String value;
+  final String groupValue;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) => RadioListTile<String>(
+    value: value,
+    groupValue: groupValue,
+    onChanged: (value) {
+      if (value != null) onChanged(value);
+    },
+    secondary: Text(flag, style: const TextStyle(fontSize: 27)),
+    title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+    activeColor: _green,
+  );
+}
+
+class _AccountOption extends StatelessWidget {
+  const _AccountOption({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.selected,
+    required this.onTap,
+  });
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+    onTap: onTap,
+    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+    leading: CircleAvatar(
+      backgroundColor: selected ? const Color(0xFFDCEBD7) : _field,
+      foregroundColor: selected ? _green : _muted,
+      child: Icon(icon),
+    ),
+    title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+    subtitle: Text(subtitle),
+    trailing:
+        selected
+            ? const Icon(Icons.check_circle_rounded, color: _green)
+            : const Icon(Icons.circle_outlined, color: _line),
+  );
+}
+
+class _VerificationBanner extends StatelessWidget {
+  const _VerificationBanner({
+    required this.status,
+    required this.requestTitle,
+    required this.message,
+    required this.onTap,
+    this.compact = false,
+  });
+
+  final String status;
+  final String? requestTitle;
+  final String? message;
+  final VoidCallback? onTap;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final needsAction =
+        status == 'DRAFT' || status == 'NEEDS_CHANGES' || status == 'REJECTED';
+    final title = switch (status) {
+      'NEEDS_CHANGES' =>
+        requestTitle?.trim().isNotEmpty == true
+            ? requestTitle!
+            : 'Action required for verification',
+      'SUBMITTED' || 'IN_REVIEW' => 'Verification pending',
+      'REJECTED' => 'Verification needs your attention',
+      _ => 'Verify your seller profile',
+    };
+    final subtitle = switch (status) {
+      'NEEDS_CHANGES' =>
+        message?.trim().isNotEmpty == true
+            ? message!
+            : 'The verification team needs more information.',
+      'SUBMITTED' ||
+      'IN_REVIEW' => 'We will notify you when the review is complete.',
+      'REJECTED' =>
+        message?.trim().isNotEmpty == true
+            ? message!
+            : 'Review the decision and submit a new request.',
+      _ => 'Complete verification to unlock seller features.',
+    };
+    final background =
+        needsAction ? const Color(0xFFFFE9B0) : const Color(0xFFDCE9F4);
+    final foreground =
+        needsAction ? const Color(0xFF5D3D00) : const Color(0xFF173E5B);
+    return Material(
+      color: background,
+      borderRadius: BorderRadius.circular(22),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(22),
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: compact ? 14 : 16,
+            vertical: compact ? 12 : 16,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: compact ? 38 : 42,
+                height: compact ? 38 : 42,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: .64),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  needsAction
+                      ? Icons.priority_high_rounded
+                      : Icons.hourglass_top_rounded,
+                  color: foreground,
+                ),
+              ),
+              const SizedBox(width: 13),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: compact ? 1 : 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: foreground,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15.5,
+                      ),
+                    ),
+                    if (!compact) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        subtitle,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: foreground.withValues(alpha: .78),
+                          height: 1.35,
+                          fontSize: 12.5,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (onTap != null)
+                Icon(Icons.arrow_forward_rounded, color: foreground)
+              else
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 9,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: .64),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    'PENDING',
+                    style: TextStyle(
+                      color: foreground,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SellerVerificationScreen extends StatefulWidget {
+  const _SellerVerificationScreen({
+    required this.type,
+    required this.status,
+    required this.requestTitle,
+    required this.adminMessage,
+    required this.requestedDocuments,
+    required this.requiresTextResponse,
+    required this.responseController,
+    required this.documents,
+    required this.initiallyConfirmed,
+    required this.onAddDocument,
+    required this.onRemoveDocument,
+    required this.onConfirmed,
+    required this.onSubmit,
+  });
+
+  final _AccountType type;
+  final String status;
+  final String? requestTitle;
+  final String? adminMessage;
+  final List<String> requestedDocuments;
+  final bool requiresTextResponse;
+  final TextEditingController responseController;
+  final List<VerificationDocumentUpload> documents;
+  final bool initiallyConfirmed;
+  final Future<void> Function(String kind) onAddDocument;
+  final void Function(String kind) onRemoveDocument;
+  final ValueChanged<bool> onConfirmed;
+  final Future<bool> Function() onSubmit;
+
+  @override
+  State<_SellerVerificationScreen> createState() =>
+      _SellerVerificationScreenState();
+}
+
+class _SellerVerificationScreenState extends State<_SellerVerificationScreen> {
+  late bool _confirmed = widget.initiallyConfirmed;
+  bool _submitting = false;
+
+  bool get _readOnly =>
+      widget.status == 'SUBMITTED' || widget.status == 'IN_REVIEW';
+
+  @override
+  Widget build(BuildContext context) {
+    final isAdminRequest = widget.status == 'NEEDS_CHANGES';
+    final title =
+        isAdminRequest && widget.requestTitle?.trim().isNotEmpty == true
+            ? widget.requestTitle!
+            : _readOnly
+            ? 'Verification under review'
+            : 'Verify your seller profile';
+    return Scaffold(
+      backgroundColor: _cream,
+      appBar: AppBar(
+        backgroundColor: _cream,
+        surfaceTintColor: Colors.transparent,
+        title: const Text('Seller verification'),
+      ),
+      body: SafeArea(
+        top: false,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color:
+                    isAdminRequest
+                        ? const Color(0xFFFFE9B0)
+                        : const Color(0xFFE7F0E2),
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    isAdminRequest
+                        ? Icons.mark_email_unread_outlined
+                        : Icons.verified_user_outlined,
+                    color: _deepGreen,
+                    size: 30,
+                  ),
+                  const SizedBox(height: 14),
+                  Text(title, style: _title),
+                  const SizedBox(height: 7),
+                  Text(
+                    isAdminRequest &&
+                            widget.adminMessage?.trim().isNotEmpty == true
+                        ? widget.adminMessage!
+                        : _readOnly
+                        ? 'Your documents were submitted. We will notify you when the review is complete.'
+                        : 'Help customers trust your seller profile by confirming who you are.',
+                    style: const TextStyle(color: _muted, height: 1.45),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 18),
+            if (_readOnly)
+              Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: _line),
+                ),
+                child: const Row(
+                  children: [
+                    CircularProgressIndicator(strokeWidth: 2),
+                    SizedBox(width: 16),
+                    Expanded(
+                      child: Text(
+                        'No action is needed while the verification team reviews your submission.',
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else ...[
+              _VerificationDocumentsCard(
+                type: widget.type,
+                verificationStatus: widget.status,
+                requestedDocuments: widget.requestedDocuments,
+                requiresTextResponse: widget.requiresTextResponse,
+                responseController: widget.responseController,
+                documents: widget.documents,
+                confirmed: _confirmed,
+                onAdd: (kind) async {
+                  await widget.onAddDocument(kind);
+                  if (mounted) setState(() {});
+                },
+                onRemove: (kind) {
+                  widget.onRemoveDocument(kind);
+                  setState(() {});
+                },
+                onConfirmed: (value) {
+                  final confirmed = value ?? false;
+                  setState(() => _confirmed = confirmed);
+                  widget.onConfirmed(confirmed);
+                },
+              ),
+              const SizedBox(height: 18),
+              _PrimaryButton(
+                label:
+                    isAdminRequest
+                        ? 'Submit requested information'
+                        : 'Submit for verification',
+                loading: _submitting,
+                onPressed: () async {
+                  setState(() => _submitting = true);
+                  final submitted = await widget.onSubmit();
+                  if (!context.mounted) return;
+                  setState(() => _submitting = false);
+                  if (submitted) Navigator.pop(context);
+                },
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ProfilePage extends StatelessWidget {
   const _ProfilePage({
     required this.type,
@@ -2321,7 +3794,7 @@ class _ProfilePage extends StatelessWidget {
                 ),
               ),
               IconButton(
-                tooltip: 'Edit profile',
+                tooltip: localizeText(context, 'Edit profile'),
                 onPressed: onEditProfile,
                 icon: const Icon(Icons.edit_outlined),
               ),
@@ -2649,9 +4122,12 @@ class _VerificationDocumentsCard extends StatelessWidget {
               minLines: 3,
               maxLines: 5,
               textInputAction: TextInputAction.newline,
-              decoration: const InputDecoration(
-                labelText: 'Response to reviewer',
-                hintText: 'Answer the question or explain what you changed.',
+              decoration: InputDecoration(
+                labelText: localizeText(context, 'Response to reviewer'),
+                hintText: localizeText(
+                  context,
+                  'Answer the question or explain what you changed.',
+                ),
               ),
             ),
             const SizedBox(height: 8),
@@ -2737,7 +4213,7 @@ class _VerificationDocumentRow extends StatelessWidget {
           TextButton(onPressed: onAdd, child: const Text('Add'))
         else
           IconButton(
-            tooltip: 'Remove',
+            tooltip: localizeText(context, 'Remove'),
             onPressed: onRemove,
             icon: const Icon(Icons.close_rounded),
           ),
@@ -2825,11 +4301,11 @@ class _RequiredField extends StatelessWidget {
   @override
   Widget build(BuildContext context) => TextFormField(
     controller: controller,
-    decoration: InputDecoration(labelText: '$label *'),
+    decoration: InputDecoration(labelText: '${localizeText(context, label)} *'),
     validator:
         (value) =>
             value == null || value.trim().isEmpty
-                ? '$label is required.'
+                ? localizeText(context, '$label is required.')
                 : null,
   );
 }
@@ -2908,12 +4384,12 @@ class _InternationalPhoneFieldState extends State<_InternationalPhoneField> {
     showCountryPicker(
       context: context,
       showPhoneCode: true,
-      countryListTheme: const CountryListThemeData(
+      countryListTheme: CountryListThemeData(
         bottomSheetHeight: 560,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         inputDecoration: InputDecoration(
-          labelText: 'Search country or code',
-          prefixIcon: Icon(Icons.search),
+          labelText: localizeText(context, 'Search country or code'),
+          prefixIcon: const Icon(Icons.search),
         ),
       ),
       onSelect: (country) {
@@ -2930,8 +4406,11 @@ class _InternationalPhoneFieldState extends State<_InternationalPhoneField> {
     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
     onChanged: (_) => _sync(),
     decoration: InputDecoration(
-      labelText: 'Phone number *',
-      hintText: _country.example.isEmpty ? 'Phone number' : _country.example,
+      labelText: localizeText(context, 'Phone number *'),
+      hintText:
+          _country.example.isEmpty
+              ? localizeText(context, 'Phone number')
+              : _country.example,
       prefixIconConstraints: const BoxConstraints(minWidth: 108),
       prefixIcon: InkWell(
         onTap: _chooseCountry,
@@ -2955,7 +4434,7 @@ class _InternationalPhoneFieldState extends State<_InternationalPhoneField> {
       final value = widget.controller.text;
       return RegExp(r'^\+[1-9]\d{7,14}$').hasMatch(value)
           ? null
-          : 'Enter a valid phone number.';
+          : localizeText(context, 'Enter a valid phone number.');
     },
   );
 }
