@@ -4,6 +4,8 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../notifications/device_installation_store.dart';
+
 class BackendUser {
   const BackendUser({
     required this.onboardingStep,
@@ -167,6 +169,7 @@ class BackendService {
 
   final FirebaseAuth? _providedAuth;
   final Dio _dio;
+  final _installationStore = DeviceInstallationStore();
 
   FirebaseAuth get _auth => _providedAuth ?? FirebaseAuth.instance;
 
@@ -202,7 +205,11 @@ class BackendService {
       data: {'query': query, 'variables': variables},
       options: Options(
         contentType: Headers.jsonContentType,
-        headers: {if (token != null) 'authorization': 'Bearer $token'},
+        headers: {
+          if (token != null) 'authorization': 'Bearer $token',
+          if (authenticated)
+            'x-frsh-installation-id': await _installationStore.id(),
+        },
         validateStatus: (_) => true,
       ),
     );
@@ -349,13 +356,19 @@ class BackendService {
   );
 
   Future<void> registerPushInstallation({
+    required String installationId,
     required String token,
     required String platform,
     required String locale,
   }) => _gql(
     'mutation(\$input: PushInstallationInput!) { registerPushInstallation(input: \$input) }',
     {
-      'input': {'token': token, 'platform': platform, 'locale': locale},
+      'input': {
+        'installationId': installationId,
+        'token': token,
+        'platform': platform,
+        'locale': locale,
+      },
     },
   );
 

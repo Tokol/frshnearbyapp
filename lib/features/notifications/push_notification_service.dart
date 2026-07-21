@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../auth/backend_service.dart';
+import 'device_installation_store.dart';
 
 class PushNotificationService {
   PushNotificationService._();
@@ -14,6 +15,7 @@ class PushNotificationService {
 
   final _messaging = FirebaseMessaging.instance;
   final _backend = BackendService();
+  final _installationStore = DeviceInstallationStore();
   StreamSubscription<User?>? _authSubscription;
   StreamSubscription<String>? _tokenSubscription;
   StreamSubscription<RemoteMessage>? _messageSubscription;
@@ -58,6 +60,7 @@ class PushNotificationService {
   Future<void> _registerToken(String token) async {
     if (FirebaseAuth.instance.currentUser == null) return;
     await _backend.registerPushInstallation(
+      installationId: await _installationStore.id(),
       token: token,
       platform: _platform,
       locale: PlatformDispatcher.instance.locale.languageCode,
