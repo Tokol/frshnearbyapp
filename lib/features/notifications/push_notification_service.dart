@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -16,6 +17,7 @@ class PushNotificationService {
   final _messaging = FirebaseMessaging.instance;
   final _backend = BackendService();
   final _installationStore = DeviceInstallationStore();
+  final _deviceInfo = DeviceInfoPlugin();
   StreamSubscription<User?>? _authSubscription;
   StreamSubscription<String>? _tokenSubscription;
   StreamSubscription<RemoteMessage>? _messageSubscription;
@@ -64,6 +66,7 @@ class PushNotificationService {
       token: token,
       platform: _platform,
       locale: PlatformDispatcher.instance.locale.languageCode,
+      deviceName: await _deviceName(),
     );
     _registeredToken = token;
   }
@@ -102,5 +105,38 @@ class PushNotificationService {
       TargetPlatform.macOS => 'MACOS',
       _ => 'OTHER',
     };
+  }
+
+  Future<String?> _deviceName() async {
+    try {
+      if (kIsWeb) {
+        final info = await _deviceInfo.webBrowserInfo;
+        final browser = info.browserName.name;
+        final platform = info.platform;
+        return platform?.isNotEmpty == true ? '$browser · $platform' : browser;
+      }
+      return switch (defaultTargetPlatform) {
+        TargetPlatform.android => _androidDeviceName(),
+        TargetPlatform.iOS => _iosDeviceName(),
+        _ => null,
+      };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<String> _androidDeviceName() async {
+    final info = await _deviceInfo.androidInfo;
+    final manufacturer = info.manufacturer.trim();
+    final model = info.model.trim();
+    if (model.toLowerCase().startsWith(manufacturer.toLowerCase())) {
+      return model;
+    }
+    return '$manufacturer $model'.trim();
+  }
+
+  Future<String> _iosDeviceName() async {
+    final info = await _deviceInfo.iosInfo;
+    return '${info.name} · ${info.utsname.machine}';
   }
 }

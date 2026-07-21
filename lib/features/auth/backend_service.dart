@@ -360,6 +360,7 @@ class BackendService {
     required String token,
     required String platform,
     required String locale,
+    String? deviceName,
   }) => _gql(
     'mutation(\$input: PushInstallationInput!) { registerPushInstallation(input: \$input) }',
     {
@@ -368,6 +369,7 @@ class BackendService {
         'token': token,
         'platform': platform,
         'locale': locale,
+        if (deviceName?.isNotEmpty == true) 'deviceName': deviceName,
       },
     },
   );
