@@ -737,8 +737,8 @@ class _SaleCard extends StatelessWidget {
               ClipRRect(
                 borderRadius: BorderRadius.circular(16),
                 child: SizedBox(
-                  width: 72,
-                  height: 72,
+                  width: 88,
+                  height: 88,
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
@@ -1454,8 +1454,9 @@ class _CreateHotSaleScreenState extends State<_CreateHotSaleScreen> {
     },
     borderRadius: BorderRadius.circular(18),
     child: Container(
-      height: 180,
+      height: 200,
       decoration: BoxDecoration(
+        color: const Color(0xFFF3F7EF),
         border: Border.all(color: const Color(0xFFB9C8B5)),
         borderRadius: BorderRadius.circular(18),
       ),
@@ -1475,7 +1476,7 @@ class _CreateHotSaleScreenState extends State<_CreateHotSaleScreen> {
               : Stack(
                 fit: StackFit.expand,
                 children: [
-                  Image.memory(_photoBytes!, fit: BoxFit.cover),
+                  Image.memory(_photoBytes!, fit: BoxFit.contain),
                   const Align(
                     alignment: Alignment.topRight,
                     child: Padding(
@@ -1658,7 +1659,7 @@ class _HotSalesSkeleton extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _skeletonBlock(width: 72, height: 72, radius: 16),
+                  _skeletonBlock(width: 88, height: 88, radius: 16),
                   const SizedBox(width: 14),
                   Expanded(
                     child: Column(
