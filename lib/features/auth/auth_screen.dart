@@ -2806,37 +2806,7 @@ class _SellerDashboardPage extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 24),
-          Row(
-            children: [
-              Expanded(child: Text('Hot Sales', style: _title)),
-              FilledButton.icon(
-                onPressed:
-                    () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const HotSalesScreen(),
-                      ),
-                    ),
-                icon: const Icon(Icons.add_rounded),
-                label: const Text('Add product'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          InkWell(
-            onTap:
-                () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const HotSalesScreen(),
-                  ),
-                ),
-            borderRadius: BorderRadius.circular(20),
-            child: const _EmptyDashboardCard(
-              icon: Icons.local_offer_outlined,
-              title: 'Manage Hot Sales',
-              body:
-                  'Add seasonal products, update stock, and choose farm or REKO pickup.',
-            ),
-          ),
+          const HotSalesDashboardSection(),
         ],
       ),
     ),

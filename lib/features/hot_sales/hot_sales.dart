@@ -101,6 +101,15 @@ class _Sale {
   int get priceCents => json['priceCents'] as int;
   String get unit => json['unit'] as String;
   String? get customUnit => json['customUnit'] as String?;
+  String? get productionDetail => json['productionDetail'] as String?;
+  bool get availableAtFarm => json['availableAtFarm'] as bool;
+  String get status => json['status'] as String;
+  String get imageName => json['imageName'] as String;
+  String get imageMimeType => json['imageMimeType'] as String;
+  List<String> get rekoRingIds =>
+      (json['rekoRings'] as List<dynamic>)
+          .map((ring) => (ring as Map<String, dynamic>)['id'] as String)
+          .toList();
   Uint8List get image => base64Decode(json['imageBase64'] as String);
 }
 
@@ -152,7 +161,7 @@ class _HotSalesApi {
 
   Future<List<_Sale>> sales() async {
     const fields =
-        'id categoryKey originalLanguage detectedLanguage originalTitle description productionDetail unit priceCents quantity producedAt availableAtFarm status imageMimeType imageBase64 translations { locale title description productionDetail status provider model } rekoRings { id name municipality regionName }';
+        'id categoryKey originalLanguage detectedLanguage originalTitle description productionDetail unit priceCents quantity producedAt availableAtFarm status imageName imageMimeType imageBase64 translations { locale title description productionDetail status provider model } rekoRings { id name municipality regionName }';
     Map<String, dynamic> data;
     try {
       data = await send('query { myHotSales { $fields customUnit } }');
@@ -179,12 +188,24 @@ class _HotSalesApi {
     'mutation(\$input: CreateHotSaleInput!) { createHotSale(input: \$input) { id } }',
     {'input': input},
   );
+  Future<void> update(Map<String, dynamic> input) => send(
+    'mutation(\$input: UpdateHotSaleInput!) { updateHotSale(input: \$input) { id } }',
+    {'input': input},
+  );
   Future<void> quantity(String id, double value) => send(
     'mutation(\$input: HotSaleQuantityInput!) { setHotSaleQuantity(input: \$input) { id } }',
     {
       'input': {'id': id, 'quantity': value},
     },
   );
+  Future<void> availability(String id, bool available) => send(
+    'mutation(\$input: HotSaleAvailabilityInput!) { setHotSaleAvailability(input: \$input) { id } }',
+    {
+      'input': {'id': id, 'available': available},
+    },
+  );
+  Future<void> archive(String id) =>
+      send('mutation(\$id: String!) { archiveHotSale(id: \$id) }', {'id': id});
 }
 
 class HotSalesScreen extends StatefulWidget {
@@ -248,6 +269,12 @@ class _HotSalesScreenState extends State<HotSalesScreen> {
                     await _api.quantity(sales[index].id, value);
                     if (mounted) setState(() => _sales = _api.sales());
                   },
+                  onEdit: () => _edit(sales[index]),
+                  onDelete: () => _delete(sales[index]),
+                  onAvailabilityChanged: (available) async {
+                    await _api.availability(sales[index].id, available);
+                    if (mounted) setState(() => _sales = _api.sales());
+                  },
                 ),
           );
         },
@@ -261,6 +288,157 @@ class _HotSalesScreenState extends State<HotSalesScreen> {
     );
     if (saved == true && mounted) setState(() => _sales = _api.sales());
   }
+
+  Future<void> _edit(_Sale sale) async {
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => _CreateHotSaleScreen(api: _api, sale: sale),
+      ),
+    );
+    if (saved == true && mounted) setState(() => _sales = _api.sales());
+  }
+
+  Future<void> _delete(_Sale sale) async {
+    final confirmed = await _confirmDelete(context, sale);
+    if (!confirmed) return;
+    await _api.archive(sale.id);
+    if (mounted) setState(() => _sales = _api.sales());
+  }
+}
+
+class HotSalesDashboardSection extends StatefulWidget {
+  const HotSalesDashboardSection({super.key});
+
+  @override
+  State<HotSalesDashboardSection> createState() =>
+      _HotSalesDashboardSectionState();
+}
+
+class _HotSalesDashboardSectionState extends State<HotSalesDashboardSection> {
+  final _api = _HotSalesApi();
+  late Future<List<_Sale>> _sales = _api.sales();
+
+  void _reload() => setState(() => _sales = _api.sales());
+
+  Future<void> _add() async {
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => _CreateHotSaleScreen(api: _api)),
+    );
+    if (saved == true && mounted) _reload();
+  }
+
+  Future<void> _edit(_Sale sale) async {
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => _CreateHotSaleScreen(api: _api, sale: sale),
+      ),
+    );
+    if (saved == true && mounted) _reload();
+  }
+
+  Future<void> _delete(_Sale sale) async {
+    if (!await _confirmDelete(context, sale)) return;
+    try {
+      await _api.archive(sale.id);
+      if (mounted) _reload();
+    } catch (error) {
+      if (mounted) _showError(context, error);
+    }
+  }
+
+  Future<void> _changeQuantity(_Sale sale, double value) async {
+    try {
+      await _api.quantity(sale.id, value);
+      if (mounted) _reload();
+    } catch (error) {
+      if (mounted) _showError(context, error);
+    }
+  }
+
+  Future<void> _changeAvailability(_Sale sale, bool available) async {
+    try {
+      await _api.availability(sale.id, available);
+      if (mounted) _reload();
+    } catch (error) {
+      if (mounted) _showError(context, error);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final language = Localizations.localeOf(context).languageCode;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                localizeText(context, 'Hot Sales'),
+                style: const TextStyle(
+                  color: _ink,
+                  fontSize: 24,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            FilledButton.icon(
+              onPressed: _add,
+              icon: const Icon(Icons.add_rounded),
+              label: Text(localizeText(context, 'Add product')),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        FutureBuilder<List<_Sale>>(
+          future: _sales,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              return const Padding(
+                padding: EdgeInsets.all(28),
+                child: Center(child: CircularProgressIndicator()),
+              );
+            }
+            if (snapshot.hasError) {
+              return _InlineMessage(
+                icon: Icons.cloud_off_outlined,
+                text: localizeText(context, 'Could not load Hot Sales'),
+                actionLabel: localizeText(context, 'Try again'),
+                onAction: _reload,
+              );
+            }
+            final sales = snapshot.data ?? const [];
+            if (sales.isEmpty) {
+              return _InlineMessage(
+                icon: Icons.local_offer_outlined,
+                text: localizeText(
+                  context,
+                  'No products yet. Add your first seasonal product.',
+                ),
+              );
+            }
+            return Column(
+              children: [
+                for (var index = 0; index < sales.length; index++) ...[
+                  if (index > 0) const SizedBox(height: 12),
+                  _SaleCard(
+                    sale: sales[index],
+                    language: language,
+                    onChanged: (value) => _changeQuantity(sales[index], value),
+                    onEdit: () => _edit(sales[index]),
+                    onDelete: () => _delete(sales[index]),
+                    onAvailabilityChanged:
+                        (available) =>
+                            _changeAvailability(sales[index], available),
+                  ),
+                ],
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
 }
 
 class _SaleCard extends StatelessWidget {
@@ -268,10 +446,16 @@ class _SaleCard extends StatelessWidget {
     required this.sale,
     required this.language,
     required this.onChanged,
+    required this.onEdit,
+    required this.onDelete,
+    required this.onAvailabilityChanged,
   });
   final _Sale sale;
   final String language;
   final ValueChanged<double> onChanged;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+  final ValueChanged<bool> onAvailabilityChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -359,9 +543,60 @@ class _SaleCard extends StatelessWidget {
                   ],
                 ),
               ),
-              TextButton(
-                onPressed: () {},
-                child: Text(localizeText(context, 'Manage')),
+              PopupMenuButton<String>(
+                onSelected: (value) {
+                  if (value == 'edit') onEdit();
+                  if (value == 'delete') onDelete();
+                },
+                itemBuilder:
+                    (context) => [
+                      PopupMenuItem(
+                        value: 'edit',
+                        child: ListTile(
+                          leading: const Icon(Icons.edit_outlined),
+                          title: Text(localizeText(context, 'Edit')),
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'delete',
+                        child: ListTile(
+                          leading: const Icon(
+                            Icons.delete_outline,
+                            color: Colors.red,
+                          ),
+                          title: Text(
+                            localizeText(context, 'Delete'),
+                            style: const TextStyle(color: Colors.red),
+                          ),
+                        ),
+                      ),
+                    ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Icon(
+                sale.status == 'PAUSED'
+                    ? Icons.visibility_off_outlined
+                    : Icons.visibility_outlined,
+                size: 19,
+                color: sale.status == 'PAUSED' ? _muted : _green,
+              ),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  localizeText(
+                    context,
+                    sale.status == 'PAUSED' ? 'Unavailable' : 'Available',
+                  ),
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+              Switch.adaptive(
+                value: sale.status != 'PAUSED',
+                onChanged: onAvailabilityChanged,
               ),
             ],
           ),
@@ -398,8 +633,9 @@ class _SaleCard extends StatelessWidget {
 }
 
 class _CreateHotSaleScreen extends StatefulWidget {
-  const _CreateHotSaleScreen({required this.api});
+  const _CreateHotSaleScreen({required this.api, this.sale});
   final _HotSalesApi api;
+  final _Sale? sale;
   @override
   State<_CreateHotSaleScreen> createState() => _CreateHotSaleScreenState();
 }
@@ -422,6 +658,23 @@ class _CreateHotSaleScreenState extends State<_CreateHotSaleScreen> {
   final Set<String> _ringIds = {};
 
   @override
+  void initState() {
+    super.initState();
+    final sale = widget.sale;
+    if (sale == null) return;
+    _title.text = sale.originalTitle;
+    _description.text = sale.originalDescription;
+    _production.text = sale.productionDetail ?? '';
+    _quantity.text = sale.quantity.toString();
+    _price.text = (sale.priceCents / 100).toStringAsFixed(2);
+    _unit = sale.unit;
+    _customUnit.text = sale.customUnit ?? '';
+    _farm = sale.availableAtFarm;
+    _photoBytes = sale.image;
+    _ringIds.addAll(sale.rekoRingIds);
+  }
+
+  @override
   void dispose() {
     _title.dispose();
     _description.dispose();
@@ -439,7 +692,12 @@ class _CreateHotSaleScreenState extends State<_CreateHotSaleScreen> {
       backgroundColor: _surface,
       appBar: AppBar(
         backgroundColor: _surface,
-        title: Text(localizeText(context, 'Add Hot Sale')),
+        title: Text(
+          localizeText(
+            context,
+            widget.sale == null ? 'Add Hot Sale' : 'Edit Hot Sale',
+          ),
+        ),
       ),
       body: Form(
         key: _form,
@@ -712,7 +970,12 @@ class _CreateHotSaleScreenState extends State<_CreateHotSaleScreen> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                       : const Icon(Icons.add),
-              label: Text(localizeText(context, 'Publish Hot Sale')),
+              label: Text(
+                localizeText(
+                  context,
+                  widget.sale == null ? 'Publish Hot Sale' : 'Save changes',
+                ),
+              ),
             ),
           ],
         ),
@@ -820,7 +1083,7 @@ class _CreateHotSaleScreenState extends State<_CreateHotSaleScreen> {
 
   Future<void> _save() async {
     if (!_form.currentState!.validate()) return;
-    if (_photoBytes == null || _photo == null) {
+    if (_photoBytes == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(localizeText(context, 'Add one product photo.')),
@@ -843,15 +1106,21 @@ class _CreateHotSaleScreenState extends State<_CreateHotSaleScreen> {
     }
     setState(() => _saving = true);
     try {
-      final extension = _photo!.name.toLowerCase();
+      final imageName = _photo?.name ?? widget.sale!.imageName;
+      final extension = imageName.toLowerCase();
       final mime =
-          extension.endsWith('.png')
+          _photo == null
+              ? widget.sale!.imageMimeType
+              : extension.endsWith('.png')
               ? 'image/png'
               : extension.endsWith('.webp')
               ? 'image/webp'
               : 'image/jpeg';
-      await widget.api.create({
-        'originalLanguage': Localizations.localeOf(context).languageCode,
+      final input = <String, dynamic>{
+        if (widget.sale != null) 'id': widget.sale!.id,
+        'originalLanguage':
+            widget.sale?.originalLanguage ??
+            Localizations.localeOf(context).languageCode,
         'originalTitle': _title.text.trim(),
         'description': _description.text.trim(),
         if (_production.text.trim().isNotEmpty)
@@ -863,10 +1132,15 @@ class _CreateHotSaleScreenState extends State<_CreateHotSaleScreen> {
         'quantity': double.parse(_quantity.text.replaceAll(',', '.')),
         'availableAtFarm': _farm,
         'rekoRingIds': _ringIds.toList(),
-        'imageName': _photo!.name,
+        'imageName': imageName,
         'imageMimeType': mime,
         'imageBase64': base64Encode(_photoBytes!),
-      });
+      };
+      if (widget.sale == null) {
+        await widget.api.create(input);
+      } else {
+        await widget.api.update(input);
+      }
       if (mounted) Navigator.of(context).pop(true);
     } catch (error) {
       if (mounted)
@@ -891,6 +1165,70 @@ String _unitLabel(BuildContext context, String unit) =>
       'OTHER' => 'Other / custom unit',
       _ => unit,
     });
+
+Future<bool> _confirmDelete(BuildContext context, _Sale sale) async =>
+    await showDialog<bool>(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: Text(localizeText(context, 'Delete product?')),
+            content: Text(
+              '${localizeText(context, 'This will remove')} '
+              '"${sale.originalTitle}" '
+              '${localizeText(context, 'from your Hot Sales list.')}',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text(localizeText(context, 'Cancel')),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                onPressed: () => Navigator.pop(context, true),
+                child: Text(localizeText(context, 'Delete')),
+              ),
+            ],
+          ),
+    ) ??
+    false;
+
+void _showError(BuildContext context, Object error) =>
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(error.toString().replaceFirst('Bad state: ', ''))),
+    );
+
+class _InlineMessage extends StatelessWidget {
+  const _InlineMessage({
+    required this.icon,
+    required this.text,
+    this.actionLabel,
+    this.onAction,
+  });
+
+  final IconData icon;
+  final String text;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(20),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      border: Border.all(color: const Color(0xFFD5DED1)),
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: Row(
+      children: [
+        Icon(icon, color: _green),
+        const SizedBox(width: 12),
+        Expanded(child: Text(text, style: const TextStyle(color: _muted))),
+        if (onAction != null)
+          TextButton(onPressed: onAction, child: Text(actionLabel ?? 'Retry')),
+      ],
+    ),
+  );
+}
 
 class _Message extends StatelessWidget {
   const _Message({required this.icon, required this.text});
