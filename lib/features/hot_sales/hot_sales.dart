@@ -151,9 +151,16 @@ class _HotSalesApi {
   }
 
   Future<List<_Sale>> sales() async {
-    final data = await send(
-      'query { myHotSales { id categoryKey originalLanguage detectedLanguage originalTitle description productionDetail unit customUnit priceCents quantity producedAt availableAtFarm status imageMimeType imageBase64 translations { locale title description productionDetail status provider model } rekoRings { id name municipality regionName } } }',
-    );
+    const fields =
+        'id categoryKey originalLanguage detectedLanguage originalTitle description productionDetail unit priceCents quantity producedAt availableAtFarm status imageMimeType imageBase64 translations { locale title description productionDetail status provider model } rekoRings { id name municipality regionName }';
+    Map<String, dynamic> data;
+    try {
+      data = await send('query { myHotSales { $fields customUnit } }');
+    } on StateError catch (error) {
+      if (!error.message.toString().contains('customUnit')) rethrow;
+      // Keep the listing usable while a newly deployed API field is rolling out.
+      data = await send('query { myHotSales { $fields } }');
+    }
     return (data['myHotSales'] as List<dynamic>)
         .map((v) => _Sale(v as Map<String, dynamic>))
         .toList();
