@@ -19,6 +19,11 @@ const _surface = Color(0xFFF1F6ED);
 const _saleFields =
     'id categoryKey originalLanguage detectedLanguage originalTitle description productionDetail unit customUnit priceCents quantity producedAt availableAtFarm status imageName imageMimeType imageBase64 translations { locale title description productionDetail status provider model } rekoRings { id name municipality regionName }';
 
+// Decoding is otherwise repeated (and reallocated) on every rebuild of the
+// list, which made Image.memory treat unchanged photos as new images and
+// re-flash them whenever any single card's quantity/availability changed.
+final _decodedImageCache = <String, Uint8List>{};
+
 class _Ring {
   const _Ring({
     required this.id,
@@ -113,7 +118,10 @@ class _Sale {
       (json['rekoRings'] as List<dynamic>)
           .map((ring) => (ring as Map<String, dynamic>)['id'] as String)
           .toList();
-  Uint8List get image => base64Decode(json['imageBase64'] as String);
+  Uint8List get image {
+    final base64 = json['imageBase64'] as String;
+    return _decodedImageCache.putIfAbsent(base64, () => base64Decode(base64));
+  }
 
   _Sale changed({double? quantity, String? status}) => _Sale({
     ...json,
