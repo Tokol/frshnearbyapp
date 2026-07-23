@@ -17,7 +17,7 @@ const _ink = Color(0xFF1B2A20);
 const _muted = Color(0xFF66735F);
 const _surface = Color(0xFFF1F6ED);
 const _saleFields =
-    'id categoryKey originalLanguage detectedLanguage originalTitle description productionDetail unit customUnit priceCents quantity producedAt availableAtFarm status imageName imageMimeType imageBase64 translations { locale title description productionDetail status provider model } rekoRings { id name municipality regionName }';
+    'id categoryKey originalLanguage detectedLanguage originalTitle description productionDetail unit customUnit quantityStep priceCents quantity producedAt availableAtFarm status imageName imageMimeType imageBase64 translations { locale title description productionDetail status provider model } rekoRings { id name municipality regionName }';
 
 // Decoding is otherwise repeated (and reallocated) on every rebuild of the
 // list, which made Image.memory treat unchanged photos as new images and
@@ -109,6 +109,9 @@ class _Sale {
   int get priceCents => json['priceCents'] as int;
   String get unit => json['unit'] as String;
   String? get customUnit => json['customUnit'] as String?;
+  double get quantityStep =>
+      (json['quantityStep'] as num?)?.toDouble() ??
+      _defaultQuantityStep(unit);
   String? get productionDetail => json['productionDetail'] as String?;
   bool get availableAtFarm => json['availableAtFarm'] as bool;
   String get status => json['status'] as String;
@@ -181,10 +184,14 @@ class _HotSalesApi {
     try {
       data = await send('query { myHotSales { $_saleFields } }');
     } on StateError catch (error) {
-      if (!error.message.toString().contains('customUnit')) rethrow;
+      final message = error.message.toString();
+      if (!message.contains('customUnit') &&
+          !message.contains('quantityStep')) {
+        rethrow;
+      }
       // Keep the listing usable while a newly deployed API field is rolling out.
       data = await send(
-        'query { myHotSales { ${_saleFields.replaceFirst('customUnit ', '')} } }',
+        'query { myHotSales { ${_saleFields.replaceFirst('customUnit ', '').replaceFirst('quantityStep ', '')} } }',
       );
     }
     return (data['myHotSales'] as List<dynamic>)
@@ -499,6 +506,54 @@ class _HotSalesDashboardSectionState extends State<HotSalesDashboardSection> {
     });
   }
 
+  Future<void> _enterExactQuantity(_Sale sale) async {
+    final controller = TextEditingController(
+      text: _formatQuantity(sale.quantity),
+    );
+    final value = await showDialog<double>(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: Text(localizeText(context, 'Set exact quantity')),
+            content: TextField(
+              controller: controller,
+              autofocus: true,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: InputDecoration(
+                suffixText:
+                    sale.unit == 'OTHER'
+                        ? sale.customUnit
+                        : _unitLabel(context, sale.unit),
+                helperText: localizeText(
+                  context,
+                  'Decimals are allowed for weight and liquid.',
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(localizeText(context, 'Cancel')),
+              ),
+              FilledButton(
+                onPressed: () {
+                  final parsed = double.tryParse(
+                    controller.text.trim().replaceAll(',', '.'),
+                  );
+                  if (parsed == null || parsed < 0) return;
+                  Navigator.pop(context, _cleanQuantity(parsed));
+                },
+                child: Text(localizeText(context, 'Save')),
+              ),
+            ],
+          ),
+    );
+    controller.dispose();
+    if (value != null && mounted) _changeQuantity(sale, value);
+  }
+
   void _changeAvailability(_Sale sale, bool available) {
     _replaceVisible(
       sale.changed(
@@ -580,10 +635,7 @@ class _HotSalesDashboardSectionState extends State<HotSalesDashboardSection> {
         ),
         const SizedBox(height: 12),
         if (_loading && _visibleSales.isEmpty)
-          const Padding(
-            padding: EdgeInsets.all(28),
-            child: Center(child: CircularProgressIndicator()),
-          )
+          const _HotSalesSkeleton()
         else if (_loadError != null && _visibleSales.isEmpty)
           _InlineMessage(
             icon: Icons.cloud_off_outlined,
@@ -610,6 +662,8 @@ class _HotSalesDashboardSectionState extends State<HotSalesDashboardSection> {
                   onChanged:
                       (value) =>
                           _changeQuantity(_visibleSales[index], value),
+                  onExactQuantity:
+                      () => _enterExactQuantity(_visibleSales[index]),
                   onEdit: () => _edit(_visibleSales[index]),
                   onDelete: () => _delete(_visibleSales[index]),
                   onAvailabilityChanged:
@@ -631,6 +685,7 @@ class _SaleCard extends StatelessWidget {
     required this.sale,
     required this.language,
     required this.onChanged,
+    this.onExactQuantity,
     required this.onEdit,
     required this.onDelete,
     required this.onAvailabilityChanged,
@@ -638,6 +693,7 @@ class _SaleCard extends StatelessWidget {
   final _Sale sale;
   final String language;
   final ValueChanged<double> onChanged;
+  final VoidCallback? onExactQuantity;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
   final ValueChanged<bool> onAvailabilityChanged;
@@ -648,12 +704,29 @@ class _SaleCard extends StatelessWidget {
         sale.unit == 'OTHER' && sale.customUnit?.trim().isNotEmpty == true
             ? sale.customUnit!.trim()
             : _unitLabel(context, sale.unit);
-    return Container(
+    final isPaused = sale.status == 'PAUSED';
+    final isSoldOut =
+        !isPaused && (sale.status == 'SOLD_OUT' || sale.quantity == 0);
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOut,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: const Color(0xFFC6D3C2)),
-        borderRadius: BorderRadius.circular(22),
+        color: isPaused ? const Color(0xFFF6F7F3) : Colors.white,
+        border: Border.all(
+          color: isPaused ? const Color(0xFFE2E7DD) : const Color(0xFFDCE6D6),
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow:
+            isPaused
+                ? null
+                : const [
+                  BoxShadow(
+                    color: Color(0x0F1B2A20),
+                    blurRadius: 18,
+                    offset: Offset(0, 8),
+                  ),
+                ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -662,12 +735,20 @@ class _SaleCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               ClipRRect(
-                borderRadius: BorderRadius.circular(13),
-                child: Image.memory(
-                  sale.image,
-                  width: 76,
-                  height: 76,
-                  fit: BoxFit.cover,
+                borderRadius: BorderRadius.circular(16),
+                child: SizedBox(
+                  width: 72,
+                  height: 72,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Image.memory(sale.image, fit: BoxFit.cover),
+                      if (isPaused)
+                        Container(
+                          color: Colors.white.withValues(alpha: .55),
+                        ),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(width: 14),
@@ -675,19 +756,39 @@ class _SaleCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            sale.title(language),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 16.5,
+                              fontWeight: FontWeight.w800,
+                              color: isPaused ? _muted : _ink,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        _statusPill(context, isPaused, isSoldOut),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
                     Text(
-                      sale.title(language),
-                      style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
+                      '€${(sale.priceCents / 100).toStringAsFixed(2)} / $unit',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: isPaused ? _muted : _green,
                       ),
                     ),
-                    const SizedBox(height: 5),
+                    const SizedBox(height: 6),
                     Text(
                       sale.description(language),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: _muted),
+                      style: const TextStyle(color: _muted, height: 1.35),
                     ),
                     if (sale.isTranslated(language))
                       TextButton(
@@ -721,19 +822,16 @@ class _SaleCard extends StatelessWidget {
                           '${localizeText(context, 'AI translated from')} ${sale.originalLanguage.toUpperCase()} · ${localizeText(context, 'See original')}',
                         ),
                       ),
-                    const SizedBox(height: 5),
-                    Text(
-                      '€${(sale.priceCents / 100).toStringAsFixed(2)} / $unit',
-                    ),
                   ],
                 ),
               ),
               PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert_rounded, color: _muted),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
                 onSelected: (value) {
                   if (value == 'edit') onEdit();
-                  if (value == 'availability') {
-                    onAvailabilityChanged(sale.status == 'PAUSED');
-                  }
                   if (value == 'delete') onDelete();
                 },
                 itemBuilder:
@@ -741,31 +839,15 @@ class _SaleCard extends StatelessWidget {
                       PopupMenuItem(
                         value: 'edit',
                         child: ListTile(
+                          contentPadding: EdgeInsets.zero,
                           leading: const Icon(Icons.edit_outlined),
                           title: Text(localizeText(context, 'Edit')),
                         ),
                       ),
                       PopupMenuItem(
-                        value: 'availability',
-                        child: ListTile(
-                          leading: Icon(
-                            sale.status == 'PAUSED'
-                                ? Icons.visibility_outlined
-                                : Icons.visibility_off_outlined,
-                          ),
-                          title: Text(
-                            localizeText(
-                              context,
-                              sale.status == 'PAUSED'
-                                  ? 'Make available'
-                                  : 'Make unavailable',
-                            ),
-                          ),
-                        ),
-                      ),
-                      PopupMenuItem(
                         value: 'delete',
                         child: ListTile(
+                          contentPadding: EdgeInsets.zero,
                           leading: const Icon(
                             Icons.delete_outline,
                             color: Colors.red,
@@ -780,59 +862,173 @@ class _SaleCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Icon(
-                sale.status == 'PAUSED'
-                    ? Icons.visibility_off_outlined
-                    : Icons.visibility_outlined,
-                size: 19,
-                color: sale.status == 'PAUSED' ? _muted : _green,
-              ),
-              const SizedBox(width: 7),
-              Expanded(
-                child: Text(
-                  localizeText(
-                    context,
-                    sale.status == 'PAUSED' ? 'Unavailable' : 'Available',
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            decoration: BoxDecoration(
+              color: isPaused
+                  ? const Color(0xFFEFF0EC)
+                  : const Color(0xFFF3F7EF),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    children: [
+                      Icon(
+                        isPaused
+                            ? Icons.visibility_off_rounded
+                            : Icons.visibility_rounded,
+                        size: 19,
+                        color: isPaused ? _muted : _green,
+                      ),
+                      const SizedBox(width: 9),
+                      Expanded(
+                        child: Text(
+                          localizeText(
+                            context,
+                            isPaused
+                                ? 'Hidden from customers'
+                                : 'Visible to customers',
+                          ),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                            color: isPaused ? _muted : _ink,
+                          ),
+                        ),
+                      ),
+                      Switch.adaptive(
+                        value: !isPaused,
+                        activeColor: _green,
+                        onChanged: onAvailabilityChanged,
+                      ),
+                    ],
                   ),
-                  style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
-              ),
-              Text(
-                localizeText(context, 'Use ⋮ menu'),
-                style: const TextStyle(fontSize: 12, color: _muted),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(child: Text(localizeText(context, 'Quantity'))),
-              IconButton.filledTonal(
-                onPressed:
-                    sale.quantity > 0
-                        ? () => onChanged(
-                          (sale.quantity - 1).clamp(0, double.infinity),
-                        )
-                        : null,
-                icon: const Icon(Icons.remove),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                child: Text(
-                  '${sale.quantity.toStringAsFixed(sale.quantity % 1 == 0 ? 0 : 1)} $unit',
-                  style: const TextStyle(fontWeight: FontWeight.w800),
+                Container(height: 1, color: const Color(0xFFE3EADD)),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          localizeText(context, 'Quantity'),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                      _quantityStepper(context, unit),
+                    ],
+                  ),
                 ),
-              ),
-              IconButton.filledTonal(
-                onPressed: () => onChanged(sale.quantity + 1),
-                icon: const Icon(Icons.add),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _statusPill(BuildContext context, bool isPaused, bool isSoldOut) {
+    final (Color bg, Color fg, String label) =
+        isPaused
+            ? (const Color(0xFFE7E7E1), _muted, 'Unavailable')
+            : isSoldOut
+            ? (const Color(0xFFFCE7B8), const Color(0xFF6B4A00), 'Sold out')
+            : (const Color(0xFFDDEBD7), _green, 'Available');
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        localizeText(context, label),
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+          color: fg,
+          letterSpacing: .2,
+        ),
+      ),
+    );
+  }
+
+  Widget _quantityStepper(BuildContext context, String unit) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFFD3DECE)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _stepButton(
+            icon: Icons.remove_rounded,
+            onTap:
+                sale.quantity > 0
+                    ? () => onChanged(
+                      _cleanQuantity(
+                        (sale.quantity - sale.quantityStep).clamp(
+                          0,
+                          double.infinity,
+                        ),
+                      ),
+                    )
+                    : null,
+          ),
+          InkWell(
+            onTap: onExactQuantity,
+            borderRadius: BorderRadius.circular(8),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 62),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 9),
+                child: Text(
+                  '${_formatQuantity(sale.quantity)} $unit',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: _ink,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          _stepButton(
+            icon: Icons.add_rounded,
+            onTap:
+                () => onChanged(
+                  _cleanQuantity(sale.quantity + sale.quantityStep),
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _stepButton({required IconData icon, VoidCallback? onTap}) {
+    final enabled = onTap != null;
+    return Material(
+      color: Colors.transparent,
+      shape: const CircleBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(9),
+          child: Icon(
+            icon,
+            size: 20,
+            color: enabled ? _green : const Color(0xFFB7C1B2),
+          ),
+        ),
       ),
     );
   }
@@ -854,6 +1050,7 @@ class _CreateHotSaleScreenState extends State<_CreateHotSaleScreen> {
   final _quantity = TextEditingController();
   final _price = TextEditingController();
   final _customUnit = TextEditingController();
+  final _quantityStep = TextEditingController(text: '1');
   final _search = TextEditingController();
   String _unit = 'KILOGRAM';
   bool _farm = true;
@@ -875,6 +1072,7 @@ class _CreateHotSaleScreenState extends State<_CreateHotSaleScreen> {
     _price.text = (sale.priceCents / 100).toStringAsFixed(2);
     _unit = sale.unit;
     _customUnit.text = sale.customUnit ?? '';
+    _quantityStep.text = _formatQuantity(sale.quantityStep);
     _farm = sale.availableAtFarm;
     _photoBytes = sale.image;
     _ringIds.addAll(sale.rekoRingIds);
@@ -888,6 +1086,7 @@ class _CreateHotSaleScreenState extends State<_CreateHotSaleScreen> {
     _quantity.dispose();
     _price.dispose();
     _customUnit.dispose();
+    _quantityStep.dispose();
     _search.dispose();
     super.dispose();
   }
@@ -962,7 +1161,13 @@ class _CreateHotSaleScreenState extends State<_CreateHotSaleScreen> {
                         ),
                       )
                       .toList(),
-              onChanged: (value) => setState(() => _unit = value!),
+              onChanged:
+                  (value) => setState(() {
+                    _unit = value!;
+                    _quantityStep.text = _formatQuantity(
+                      _defaultQuantityStep(_unit),
+                    );
+                  }),
             ),
             if (_unit == 'OTHER') ...[
               const SizedBox(height: 12),
@@ -983,6 +1188,22 @@ class _CreateHotSaleScreenState extends State<_CreateHotSaleScreen> {
                         (value?.trim().isEmpty ?? true)
                             ? localizeText(context, 'Enter your selling unit.')
                             : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _quantityStep,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: InputDecoration(
+                  labelText: localizeText(context, 'Quantity button step'),
+                  helperText: localizeText(
+                    context,
+                    'Amount added or removed with each + or − tap.',
+                  ),
+                  prefixIcon: const Icon(Icons.exposure_outlined),
+                ),
+                validator: _positive,
               ),
             ],
             const SizedBox(height: 12),
@@ -1337,6 +1558,10 @@ class _CreateHotSaleScreenState extends State<_CreateHotSaleScreen> {
           'productionDetail': _production.text.trim(),
         'unit': _unit,
         if (_unit == 'OTHER') 'customUnit': _customUnit.text.trim(),
+        'quantityStep':
+            _unit == 'OTHER'
+                ? double.parse(_quantityStep.text.replaceAll(',', '.'))
+                : _defaultQuantityStep(_unit),
         'priceCents':
             ((double.parse(_price.text.replaceAll(',', '.'))) * 100).round(),
         'quantity': double.parse(_quantity.text.replaceAll(',', '.')),
@@ -1375,6 +1600,24 @@ String _unitLabel(BuildContext context, String unit) =>
       _ => unit,
     });
 
+double _defaultQuantityStep(String unit) => switch (unit) {
+  'KILOGRAM' || 'LITRE' => 0.1,
+  'GRAM' => 50,
+  _ => 1,
+};
+
+double _cleanQuantity(double value) =>
+    (value * 1000).roundToDouble() / 1000;
+
+String _formatQuantity(double value) {
+  final cleaned = _cleanQuantity(value);
+  if (cleaned == cleaned.roundToDouble()) return cleaned.toInt().toString();
+  return cleaned
+      .toStringAsFixed(3)
+      .replaceFirst(RegExp(r'0+$'), '')
+      .replaceFirst(RegExp(r'\.$'), '');
+}
+
 String _unitChoiceLabel(BuildContext context, String unit) =>
     localizeText(context, switch (unit) {
       'KILOGRAM' => 'Kilogram (kg)',
@@ -1387,6 +1630,102 @@ String _unitChoiceLabel(BuildContext context, String unit) =>
       'OTHER' => 'My own unit',
       _ => unit,
     });
+
+class _HotSalesSkeleton extends StatelessWidget {
+  const _HotSalesSkeleton();
+
+  @override
+  Widget build(BuildContext context) => Column(
+    children: [
+      for (var index = 0; index < 2; index++) ...[
+        if (index > 0) const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border.all(color: const Color(0xFFDCE6D6)),
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x0F1B2A20),
+                blurRadius: 18,
+                offset: Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _skeletonBlock(width: 72, height: 72, radius: 16),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _skeletonBlock(width: 150, height: 16),
+                        const SizedBox(height: 9),
+                        _skeletonBlock(width: 90, height: 12),
+                        const SizedBox(height: 9),
+                        _skeletonBlock(height: 11),
+                        const SizedBox(height: 6),
+                        _skeletonBlock(width: 130, height: 11),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF3F7EF),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        _skeletonBlock(width: 150, height: 14),
+                        const Spacer(),
+                        _skeletonBlock(width: 46, height: 26, radius: 13),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        _skeletonBlock(width: 70, height: 14),
+                        const Spacer(),
+                        _skeletonBlock(width: 132, height: 38, radius: 19),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ],
+  );
+
+  Widget _skeletonBlock({
+    double? width,
+    required double height,
+    double radius = 7,
+  }) => Container(
+    width: width ?? double.infinity,
+    height: height,
+    decoration: BoxDecoration(
+      color: const Color(0xFFE8EEE5),
+      borderRadius: BorderRadius.circular(radius),
+    ),
+  );
+}
 
 Future<bool> _confirmDelete(BuildContext context, _Sale sale) async =>
     await showDialog<bool>(
