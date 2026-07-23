@@ -11,6 +11,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../notifications/push_notification_service.dart';
+import '../hot_sales/hot_sales.dart';
 
 import 'auth_service.dart';
 import 'backend_service.dart';
@@ -2673,52 +2674,118 @@ class _SellerDashboardPage extends StatelessWidget {
           ? businessName
           : publicName.isNotEmpty
           ? publicName
-          : (fullName.isEmpty ? 'Your business' : fullName);
+          : type == _AccountType.business
+          ? 'Your business'
+          : 'Your farm';
+
+  String get initials {
+    final words = displayName
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((word) => word.isNotEmpty)
+        .take(2);
+    return words.map((word) => word[0].toUpperCase()).join();
+  }
+
+  String get greeting {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'Good morning';
+    if (hour < 18) return 'Good day';
+    return 'Good evening';
+  }
+
+  String? get shortAddress {
+    final current = location;
+    if (current == null) return null;
+    return [
+      current.city,
+      current.country,
+    ].where((value) => value.isNotEmpty).join(', ');
+  }
 
   @override
   Widget build(BuildContext context) => ColoredBox(
     color: const Color(0xFFF1F6ED),
     child: SafeArea(
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(18, 20, 18, 30),
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 30),
         children: [
-          const Text(
-            'SELLER WORKSPACE',
-            style: TextStyle(
-              color: _green,
-              fontSize: 12,
-              letterSpacing: 1.7,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 6),
           Row(
             children: [
-              Expanded(
+              CircleAvatar(
+                radius: 21,
+                backgroundColor: _green,
                 child: Text(
-                  displayName,
-                  style: GoogleFonts.fraunces(
-                    fontSize: 32,
-                    height: 1.05,
-                    fontWeight: FontWeight.w700,
-                    color: _ink,
+                  initials.isEmpty ? 'F' : initials,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
               ),
-              if (verificationStatus == 'VERIFIED')
-                const Icon(Icons.verified_rounded, color: _green, size: 26),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            displayName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        if (verificationStatus == 'VERIFIED') ...[
+                          const SizedBox(width: 5),
+                          const Icon(
+                            Icons.verified_rounded,
+                            color: _green,
+                            size: 18,
+                          ),
+                        ],
+                      ],
+                    ),
+                    if (shortAddress?.isNotEmpty == true)
+                      Text(
+                        shortAddress!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: _muted, fontSize: 12),
+                      ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: localizeText(context, 'Notifications'),
+                onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: const Text('Notifications are coming next'),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.notifications_none_rounded),
+              ),
             ],
           ),
-          if (location != null) ...[
-            const SizedBox(height: 7),
-            Text(
-              location!.formattedAddress,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: _muted),
-            ),
-          ],
           const SizedBox(height: 24),
+          Text(
+            greeting,
+            style: const TextStyle(fontSize: 25, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 5),
+          const Text(
+            'Manage your products, fulfil orders, and share your farm page.',
+            style: TextStyle(color: _muted, fontSize: 16, height: 1.45),
+          ),
+          const SizedBox(height: 22),
           const Row(
             children: [
               Expanded(
@@ -2739,13 +2806,36 @@ class _SellerDashboardPage extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 24),
-          Text('Quick actions', style: _title),
+          Row(
+            children: [
+              Expanded(child: Text('Hot Sales', style: _title)),
+              FilledButton.icon(
+                onPressed:
+                    () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const HotSalesScreen(),
+                      ),
+                    ),
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('Add product'),
+              ),
+            ],
+          ),
           const SizedBox(height: 12),
-          const _EmptyDashboardCard(
-            icon: Icons.inventory_2_outlined,
-            title: 'Start selling locally',
-            body:
-                'Products, inventory, and incoming orders will live in this seller workspace.',
+          InkWell(
+            onTap:
+                () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const HotSalesScreen(),
+                  ),
+                ),
+            borderRadius: BorderRadius.circular(20),
+            child: const _EmptyDashboardCard(
+              icon: Icons.local_offer_outlined,
+              title: 'Manage Hot Sales',
+              body:
+                  'Add seasonal products, update stock, and choose farm or REKO pickup.',
+            ),
           ),
         ],
       ),
