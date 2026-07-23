@@ -354,6 +354,7 @@ class _HotSalesDashboardSectionState extends State<HotSalesDashboardSection> {
   final _api = _HotSalesApi();
   List<_Sale> _visibleSales = const [];
   final Map<String, Timer> _quantityTimers = {};
+  final Map<String, double> _pendingQuantities = {};
   final Set<String> _availabilityUpdates = {};
   bool _loading = true;
   Object? _loadError;
@@ -368,6 +369,9 @@ class _HotSalesDashboardSectionState extends State<HotSalesDashboardSection> {
   void dispose() {
     for (final timer in _quantityTimers.values) {
       timer.cancel();
+    }
+    for (final entry in _pendingQuantities.entries) {
+      _api.quantity(entry.key, entry.value);
     }
     super.dispose();
   }
@@ -456,16 +460,26 @@ class _HotSalesDashboardSectionState extends State<HotSalesDashboardSection> {
     _replaceVisible(sale.changed(quantity: value, status: status));
 
     _quantityTimers[sale.id]?.cancel();
-    _quantityTimers[sale.id] = Timer(const Duration(milliseconds: 400), () async {
+    _pendingQuantities[sale.id] = value;
+    _quantityTimers[sale.id] = Timer(const Duration(seconds: 1), () async {
       try {
         await _api.quantity(sale.id, value);
+        if (_pendingQuantities[sale.id] == value) {
+          _pendingQuantities.remove(sale.id);
+        }
       } catch (error) {
+        if (_pendingQuantities[sale.id] == value) {
+          _pendingQuantities.remove(sale.id);
+        }
         if (mounted) {
           _showError(context, error);
           _refreshSilently();
         }
       } finally {
-        _quantityTimers.remove(sale.id);
+        if (_pendingQuantities[sale.id] == value ||
+            !_pendingQuantities.containsKey(sale.id)) {
+          _quantityTimers.remove(sale.id);
+        }
       }
     });
   }
