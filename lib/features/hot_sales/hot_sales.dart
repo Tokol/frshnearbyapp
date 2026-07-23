@@ -405,7 +405,6 @@ class _HotSalesDashboardSectionState extends State<HotSalesDashboardSection> {
     _setVisible(before.where((item) => item.id != sale.id).toList());
     try {
       await _api.archive(sale.id);
-      if (mounted) _refreshSilently();
     } catch (error) {
       if (mounted) {
         _setVisible(before);
@@ -425,7 +424,6 @@ class _HotSalesDashboardSectionState extends State<HotSalesDashboardSection> {
     _replaceVisible(sale.changed(quantity: value, status: status));
     try {
       await _api.quantity(sale.id, value);
-      if (mounted) _refreshSilently();
     } catch (error) {
       if (mounted) {
         _replaceVisible(before);
@@ -448,7 +446,6 @@ class _HotSalesDashboardSectionState extends State<HotSalesDashboardSection> {
     );
     try {
       await _api.availability(sale.id, available);
-      if (mounted) _refreshSilently();
     } catch (error) {
       if (mounted) {
         _replaceVisible(before);
@@ -501,13 +498,14 @@ class _HotSalesDashboardSectionState extends State<HotSalesDashboardSection> {
         FutureBuilder<List<_Sale>>(
           future: _sales,
           builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done) {
+            if (snapshot.connectionState != ConnectionState.done &&
+                _visibleSales.isEmpty) {
               return const Padding(
                 padding: EdgeInsets.all(28),
                 child: Center(child: CircularProgressIndicator()),
               );
             }
-            if (snapshot.hasError) {
+            if (snapshot.hasError && _visibleSales.isEmpty) {
               return _InlineMessage(
                 icon: Icons.cloud_off_outlined,
                 text: localizeText(context, 'Could not load Hot Sales'),
@@ -515,8 +513,11 @@ class _HotSalesDashboardSectionState extends State<HotSalesDashboardSection> {
                 onAction: _reload,
               );
             }
-            final sales = snapshot.data ?? const [];
-            _visibleSales = sales;
+            final sales = snapshot.data ?? _visibleSales;
+            if (snapshot.connectionState == ConnectionState.done &&
+                snapshot.hasData) {
+              _visibleSales = sales;
+            }
             if (sales.isEmpty) {
               return _InlineMessage(
                 icon: Icons.local_offer_outlined,
