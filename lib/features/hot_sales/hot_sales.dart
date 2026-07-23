@@ -401,7 +401,6 @@ class _CreateHotSaleScreenState extends State<_CreateHotSaleScreen> {
   final _quantity = TextEditingController();
   final _price = TextEditingController();
   final _search = TextEditingController();
-  String _originalLanguage = 'auto';
   String _unit = 'KILOGRAM';
   bool _farm = true;
   XFile? _photo;
@@ -455,34 +454,6 @@ class _CreateHotSaleScreenState extends State<_CreateHotSaleScreen> {
                       (value?.trim().length ?? 0) < 2
                           ? localizeText(context, 'Enter a product name.')
                           : null,
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              value: _originalLanguage,
-              decoration: InputDecoration(
-                labelText: localizeText(context, 'Original language'),
-                prefixIcon: const Icon(Icons.translate_rounded),
-              ),
-              items: [
-                DropdownMenuItem(
-                  value: 'auto',
-                  child: Text(localizeText(context, 'Detect automatically')),
-                ),
-                const DropdownMenuItem(value: 'en', child: Text('English')),
-                const DropdownMenuItem(value: 'fi', child: Text('Suomi')),
-                const DropdownMenuItem(value: 'sv', child: Text('Svenska')),
-              ],
-              onChanged: (value) => setState(() => _originalLanguage = value!),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 7, 4, 0),
-              child: Text(
-                localizeText(
-                  context,
-                  'We keep your original and create searchable English, Finnish, and Swedish translations.',
-                ),
-                style: const TextStyle(color: _muted, fontSize: 12),
-              ),
             ),
             const SizedBox(height: 22),
             _section(
@@ -843,7 +814,7 @@ class _CreateHotSaleScreenState extends State<_CreateHotSaleScreen> {
               ? 'image/webp'
               : 'image/jpeg';
       await widget.api.create({
-        'originalLanguage': _originalLanguage,
+        'originalLanguage': Localizations.localeOf(context).languageCode,
         'originalTitle': _title.text.trim(),
         'description': _description.text.trim(),
         if (_production.text.trim().isNotEmpty)
