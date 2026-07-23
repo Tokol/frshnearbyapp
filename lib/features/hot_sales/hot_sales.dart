@@ -1,5 +1,6 @@
 // ignore_for_file: curly_braces_in_flow_control_structures
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -351,21 +352,53 @@ class HotSalesDashboardSection extends StatefulWidget {
 
 class _HotSalesDashboardSectionState extends State<HotSalesDashboardSection> {
   final _api = _HotSalesApi();
-  late Future<List<_Sale>> _sales = _api.sales();
   List<_Sale> _visibleSales = const [];
+  final Map<String, Timer> _quantityTimers = {};
+  bool _loading = true;
+  Object? _loadError;
 
-  void _reload() => setState(() {
-    _sales = _api.sales();
-  });
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    for (final timer in _quantityTimers.values) {
+      timer.cancel();
+    }
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _loadError = null;
+    });
+    try {
+      final sales = await _api.sales();
+      if (!mounted) return;
+      setState(() {
+        _visibleSales = sales;
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = error;
+        _loading = false;
+      });
+    }
+  }
 
   void _showImmediately(_Sale changed) {
     final updated = [
       changed,
       ..._visibleSales.where((sale) => sale.id != changed.id),
     ];
-    _visibleSales = updated;
     setState(() {
-      _sales = Future.value(updated);
+      _visibleSales = updated;
     });
     _refreshSilently();
   }
@@ -374,9 +407,8 @@ class _HotSalesDashboardSectionState extends State<HotSalesDashboardSection> {
     try {
       final fresh = await _api.sales();
       if (!mounted) return;
-      _visibleSales = fresh;
       setState(() {
-        _sales = Future.value(fresh);
+        _visibleSales = fresh;
       });
     } catch (_) {
       // The confirmed mutation is already visible; retry on the next action.
@@ -413,8 +445,7 @@ class _HotSalesDashboardSectionState extends State<HotSalesDashboardSection> {
     }
   }
 
-  Future<void> _changeQuantity(_Sale sale, double value) async {
-    final before = sale;
+  void _changeQuantity(_Sale sale, double value) {
     final status =
         sale.status == 'PAUSED'
             ? 'PAUSED'
@@ -422,14 +453,20 @@ class _HotSalesDashboardSectionState extends State<HotSalesDashboardSection> {
             ? 'SOLD_OUT'
             : 'ACTIVE';
     _replaceVisible(sale.changed(quantity: value, status: status));
-    try {
-      await _api.quantity(sale.id, value);
-    } catch (error) {
-      if (mounted) {
-        _replaceVisible(before);
-        _showError(context, error);
+
+    _quantityTimers[sale.id]?.cancel();
+    _quantityTimers[sale.id] = Timer(const Duration(milliseconds: 400), () async {
+      try {
+        await _api.quantity(sale.id, value);
+      } catch (error) {
+        if (mounted) {
+          _showError(context, error);
+          _refreshSilently();
+        }
+      } finally {
+        _quantityTimers.remove(sale.id);
       }
-    }
+    });
   }
 
   Future<void> _changeAvailability(_Sale sale, bool available) async {
@@ -463,9 +500,8 @@ class _HotSalesDashboardSectionState extends State<HotSalesDashboardSection> {
   }
 
   void _setVisible(List<_Sale> sales) {
-    _visibleSales = sales;
     setState(() {
-      _sales = Future.value(sales);
+      _visibleSales = sales;
     });
   }
 
@@ -495,57 +531,48 @@ class _HotSalesDashboardSectionState extends State<HotSalesDashboardSection> {
           ],
         ),
         const SizedBox(height: 12),
-        FutureBuilder<List<_Sale>>(
-          future: _sales,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done &&
-                _visibleSales.isEmpty) {
-              return const Padding(
-                padding: EdgeInsets.all(28),
-                child: Center(child: CircularProgressIndicator()),
-              );
-            }
-            if (snapshot.hasError && _visibleSales.isEmpty) {
-              return _InlineMessage(
-                icon: Icons.cloud_off_outlined,
-                text: localizeText(context, 'Could not load Hot Sales'),
-                actionLabel: localizeText(context, 'Try again'),
-                onAction: _reload,
-              );
-            }
-            final sales = snapshot.data ?? _visibleSales;
-            if (snapshot.connectionState == ConnectionState.done &&
-                snapshot.hasData) {
-              _visibleSales = sales;
-            }
-            if (sales.isEmpty) {
-              return _InlineMessage(
-                icon: Icons.local_offer_outlined,
-                text: localizeText(
-                  context,
-                  'No products yet. Add your first seasonal product.',
+        if (_loading && _visibleSales.isEmpty)
+          const Padding(
+            padding: EdgeInsets.all(28),
+            child: Center(child: CircularProgressIndicator()),
+          )
+        else if (_loadError != null && _visibleSales.isEmpty)
+          _InlineMessage(
+            icon: Icons.cloud_off_outlined,
+            text: localizeText(context, 'Could not load Hot Sales'),
+            actionLabel: localizeText(context, 'Try again'),
+            onAction: _load,
+          )
+        else if (_visibleSales.isEmpty)
+          _InlineMessage(
+            icon: Icons.local_offer_outlined,
+            text: localizeText(
+              context,
+              'No products yet. Add your first seasonal product.',
+            ),
+          )
+        else
+          Column(
+            children: [
+              for (var index = 0; index < _visibleSales.length; index++) ...[
+                if (index > 0) const SizedBox(height: 12),
+                _SaleCard(
+                  sale: _visibleSales[index],
+                  language: language,
+                  onChanged:
+                      (value) =>
+                          _changeQuantity(_visibleSales[index], value),
+                  onEdit: () => _edit(_visibleSales[index]),
+                  onDelete: () => _delete(_visibleSales[index]),
+                  onAvailabilityChanged:
+                      (available) => _changeAvailability(
+                        _visibleSales[index],
+                        available,
+                      ),
                 ),
-              );
-            }
-            return Column(
-              children: [
-                for (var index = 0; index < sales.length; index++) ...[
-                  if (index > 0) const SizedBox(height: 12),
-                  _SaleCard(
-                    sale: sales[index],
-                    language: language,
-                    onChanged: (value) => _changeQuantity(sales[index], value),
-                    onEdit: () => _edit(sales[index]),
-                    onDelete: () => _delete(sales[index]),
-                    onAvailabilityChanged:
-                        (available) =>
-                            _changeAvailability(sales[index], available),
-                  ),
-                ],
               ],
-            );
-          },
-        ),
+            ],
+          ),
       ],
     );
   }
@@ -656,6 +683,9 @@ class _SaleCard extends StatelessWidget {
               PopupMenuButton<String>(
                 onSelected: (value) {
                   if (value == 'edit') onEdit();
+                  if (value == 'availability') {
+                    onAvailabilityChanged(sale.status == 'PAUSED');
+                  }
                   if (value == 'delete') onDelete();
                 },
                 itemBuilder:
@@ -665,6 +695,24 @@ class _SaleCard extends StatelessWidget {
                         child: ListTile(
                           leading: const Icon(Icons.edit_outlined),
                           title: Text(localizeText(context, 'Edit')),
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'availability',
+                        child: ListTile(
+                          leading: Icon(
+                            sale.status == 'PAUSED'
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                          ),
+                          title: Text(
+                            localizeText(
+                              context,
+                              sale.status == 'PAUSED'
+                                  ? 'Make available'
+                                  : 'Make unavailable',
+                            ),
+                          ),
                         ),
                       ),
                       PopupMenuItem(
@@ -704,9 +752,9 @@ class _SaleCard extends StatelessWidget {
                   style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
-              Switch.adaptive(
-                value: sale.status != 'PAUSED',
-                onChanged: onAvailabilityChanged,
+              Text(
+                localizeText(context, 'Use ⋮ menu'),
+                style: const TextStyle(fontSize: 12, color: _muted),
               ),
             ],
           ),
