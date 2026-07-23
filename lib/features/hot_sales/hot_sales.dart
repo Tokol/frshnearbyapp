@@ -752,7 +752,7 @@ class _CreateHotSaleScreenState extends State<_CreateHotSaleScreen> {
                       .map(
                         (u) => DropdownMenuItem(
                           value: u,
-                          child: Text(_unitLabel(context, u)),
+                          child: Text(_unitChoiceLabel(context, u)),
                         ),
                       )
                       .toList(),
@@ -786,7 +786,11 @@ class _CreateHotSaleScreenState extends State<_CreateHotSaleScreen> {
                 decimal: true,
               ),
               decoration: InputDecoration(
-                labelText: localizeText(context, 'Available now'),
+                labelText: localizeText(context, 'Quantity available'),
+                helperText: localizeText(
+                  context,
+                  'Enter how many selected units are available.',
+                ),
                 prefixIcon: const Icon(Icons.inventory_2_outlined),
               ),
               validator: _positive,
@@ -799,7 +803,7 @@ class _CreateHotSaleScreenState extends State<_CreateHotSaleScreen> {
               ),
               decoration: InputDecoration(
                 labelText:
-                    '${localizeText(context, 'Customer price per')} '
+                    '${localizeText(context, 'Price per')} '
                     '${_unit == 'OTHER' ? (_customUnit.text.trim().isEmpty ? localizeText(context, 'custom unit') : _customUnit.text.trim()) : _unitLabel(context, _unit)}',
                 prefixText: '€ ',
               ),
@@ -1163,6 +1167,19 @@ String _unitLabel(BuildContext context, String unit) =>
       'BOX' => 'box',
       'DOZEN' => 'dozen',
       'OTHER' => 'Other / custom unit',
+      _ => unit,
+    });
+
+String _unitChoiceLabel(BuildContext context, String unit) =>
+    localizeText(context, switch (unit) {
+      'KILOGRAM' => 'Kilogram (kg)',
+      'GRAM' => 'Gram (g)',
+      'LITRE' => 'Litre (L)',
+      'PIECE' => 'Piece',
+      'BUNCH' => 'Bunch',
+      'BOX' => 'Box',
+      'DOZEN' => 'Dozen (12 pieces)',
+      'OTHER' => 'My own unit',
       _ => unit,
     });
 
