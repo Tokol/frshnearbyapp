@@ -2832,9 +2832,17 @@ class _ConsumerProfilePage extends StatelessWidget {
   final VoidCallback onSignOut;
 
   @override
-  Widget build(BuildContext context) => ColoredBox(
-    color: const Color(0xFFFFFAF0),
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: const BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [Color(0xFFFBF2DD), _cream],
+        stops: [0, .32],
+      ),
+    ),
     child: SafeArea(
+      bottom: false,
       child: ListView(
         padding: const EdgeInsets.fromLTRB(18, 12, 18, 30),
         children: [
@@ -2844,7 +2852,7 @@ class _ConsumerProfilePage extends StatelessWidget {
                 child: Text(
                   'My profile',
                   style: GoogleFonts.fraunces(
-                    fontSize: 30,
+                    fontSize: 28,
                     fontWeight: FontWeight.w700,
                     color: _ink,
                   ),
@@ -2857,53 +2865,16 @@ class _ConsumerProfilePage extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 18),
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: const Color(0xFFF0E5CD)),
-            ),
-            child: Column(
-              children: [
-                CircleAvatar(
-                  radius: 39,
-                  backgroundColor: const Color(0xFFFFE7A8),
-                  backgroundImage:
-                      photoUrl?.isNotEmpty == true
-                          ? NetworkImage(photoUrl!)
-                          : null,
-                  child:
-                      photoUrl?.isNotEmpty == true
-                          ? null
-                          : Text(
-                            fullName.isEmpty ? 'F' : fullName[0].toUpperCase(),
-                            style: GoogleFonts.fraunces(
-                              fontSize: 30,
-                              fontWeight: FontWeight.w700,
-                              color: _ink,
-                            ),
-                          ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  fullName.isEmpty ? 'FRSH member' : fullName,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 21,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 7),
-                const Chip(
-                  label: Text('Consumer account'),
-                  avatar: Icon(Icons.shopping_basket_outlined, size: 17),
-                ),
-              ],
-            ),
+          const SizedBox(height: 6),
+          _ProfileIdentityCard(
+            image: 'assets/images/role_consumer.jpg',
+            photoUrl: photoUrl,
+            initialsSource: fullName,
+            heading: fullName.isEmpty ? 'FRSH member' : fullName,
+            badgeIcon: Icons.shopping_basket_outlined,
+            badgeLabel: 'Consumer account',
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 20),
           _ProfileSection(
             icon: Icons.person_outline_rounded,
             title: 'Personal details',
@@ -3092,6 +3063,18 @@ class _RevampedProfilePage extends StatelessWidget {
     return fullName.isEmpty ? 'FRSH member' : fullName;
   }
 
+  String get _heroImage => switch (type) {
+    _AccountType.consumer => 'assets/images/role_consumer.jpg',
+    _AccountType.producer => 'assets/images/role_producer.jpg',
+    _AccountType.business => 'assets/images/role_business.jpg',
+  };
+
+  IconData get _badgeIcon => switch (type) {
+    _AccountType.consumer => Icons.shopping_basket_outlined,
+    _AccountType.producer => Icons.spa_outlined,
+    _AccountType.business => Icons.storefront_outlined,
+  };
+
   @override
   Widget build(BuildContext context) => DecoratedBox(
     decoration: const BoxDecoration(
@@ -3104,163 +3087,228 @@ class _RevampedProfilePage extends StatelessWidget {
     ),
     child: SafeArea(
       bottom: false,
-      child: CustomScrollView(
-        slivers: [
-          SliverAppBar(
-            pinned: true,
-            automaticallyImplyLeading: false,
-            backgroundColor: const Color(0xFFF2F7EE).withValues(alpha: .95),
-            surfaceTintColor: Colors.transparent,
-            title: Text(
-              'Profile',
-              style: GoogleFonts.fraunces(
-                fontSize: 28,
-                fontWeight: FontWeight.w700,
-                color: _ink,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(18, 12, 18, 28),
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Profile',
+                  style: GoogleFonts.fraunces(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w700,
+                    color: _ink,
+                  ),
+                ),
               ),
-            ),
-            actions: [
               IconButton(
                 tooltip: localizeText(context, 'Settings'),
                 onPressed: onOpenSettings,
                 icon: const Icon(Icons.settings_outlined),
               ),
-              const SizedBox(width: 8),
             ],
           ),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),
-            sliver: SliverList.list(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x120D2A1B),
-                        blurRadius: 24,
-                        offset: Offset(0, 10),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 35,
-                        backgroundColor: _mist,
-                        backgroundImage:
-                            photoUrl?.isNotEmpty == true
-                                ? NetworkImage(photoUrl!)
-                                : null,
-                        child:
-                            photoUrl?.isNotEmpty == true
-                                ? null
-                                : Text(
-                                  fullName.isEmpty
-                                      ? 'F'
-                                      : fullName[0].toUpperCase(),
-                                  style: GoogleFonts.fraunces(
-                                    color: _green,
-                                    fontSize: 28,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                      ),
-                      const SizedBox(width: 15),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Flexible(
-                                  child: Text(
-                                    _profileDisplayName,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                ),
-                                if (_isSeller &&
-                                    verificationStatus == 'VERIFIED') ...[
-                                  const SizedBox(width: 6),
-                                  Tooltip(
-                                    message: localizeText(
-                                      context,
-                                      'Verified seller',
-                                    ),
-                                    child: const Icon(
-                                      Icons.verified_rounded,
-                                      size: 21,
-                                      color: _green,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              isConsumer && _isSeller
-                                  ? 'Consumer + $_accountLabel'
-                                  : _accountLabel,
-                              style: const TextStyle(color: _muted),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                _ProfileSection(
-                  icon: Icons.person_outline_rounded,
-                  title: 'Account details',
-                  lines:
-                      [
-                        email,
-                        phone,
-                      ].where((value) => value.isNotEmpty).toList(),
-                  onEdit: onEditProfile,
-                ),
-                if (_isSeller) ...[
-                  const SizedBox(height: 12),
-                  _ProfileSection(
-                    icon:
-                        type == _AccountType.business
-                            ? Icons.storefront_outlined
-                            : Icons.spa_outlined,
-                    title:
-                        type == _AccountType.business
-                            ? (businessName.isEmpty
-                                ? 'Business profile'
-                                : businessName)
-                            : (publicName.isEmpty
-                                ? 'Seller profile'
-                                : publicName),
-                    lines: [if (location != null) location!.formattedAddress],
-                    onEdit: onEditBusiness ?? onEditProfile,
-                  ),
-                ],
-                const SizedBox(height: 18),
-                OutlinedButton.icon(
-                  onPressed: onSignOut,
-                  icon: const Icon(Icons.logout_rounded),
-                  label: const Text('Sign out'),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 15),
-                  ),
-                ),
-              ],
+          const SizedBox(height: 6),
+          _ProfileIdentityCard(
+            image: _heroImage,
+            photoUrl: photoUrl,
+            initialsSource: fullName,
+            heading: _profileDisplayName,
+            badgeIcon: _badgeIcon,
+            badgeLabel:
+                isConsumer && _isSeller
+                    ? 'Consumer + $_accountLabel'
+                    : _accountLabel,
+            verified: _isSeller && verificationStatus == 'VERIFIED',
+          ),
+          const SizedBox(height: 20),
+          _ProfileSection(
+            icon: Icons.person_outline_rounded,
+            title: 'Account details',
+            lines:
+                [email, phone].where((value) => value.isNotEmpty).toList(),
+            onEdit: onEditProfile,
+          ),
+          if (_isSeller) ...[
+            const SizedBox(height: 12),
+            _ProfileSection(
+              icon:
+                  type == _AccountType.business
+                      ? Icons.storefront_outlined
+                      : Icons.spa_outlined,
+              title:
+                  type == _AccountType.business
+                      ? (businessName.isEmpty
+                          ? 'Business profile'
+                          : businessName)
+                      : (publicName.isEmpty ? 'Seller profile' : publicName),
+              lines: [if (location != null) location!.formattedAddress],
+              onEdit: onEditBusiness ?? onEditProfile,
+            ),
+          ],
+          const SizedBox(height: 18),
+          OutlinedButton.icon(
+            onPressed: onSignOut,
+            icon: const Icon(Icons.logout_rounded),
+            label: const Text('Sign out'),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 15),
             ),
           ),
         ],
       ),
     ),
+  );
+}
+
+/// Profile identity showcase: a role photo with the member's avatar
+/// overlapping its bottom edge, name, and an account-type badge below.
+class _ProfileIdentityCard extends StatelessWidget {
+  const _ProfileIdentityCard({
+    required this.image,
+    required this.photoUrl,
+    required this.initialsSource,
+    required this.heading,
+    required this.badgeIcon,
+    required this.badgeLabel,
+    this.verified = false,
+  });
+
+  final String image;
+  final String? photoUrl;
+  final String initialsSource;
+  final String heading;
+  final IconData badgeIcon;
+  final String badgeLabel;
+  final bool verified;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    children: [
+      Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.bottomCenter,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(28),
+            child: SizedBox(
+              height: 168,
+              width: double.infinity,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Image.asset(image, fit: BoxFit.cover),
+                  const DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Color(0x00081710), Color(0xB3081710)],
+                        stops: [0.45, 1],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: -40,
+            child: Container(
+              width: 88,
+              height: 88,
+              padding: const EdgeInsets.all(4),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Color(0x1F0D2A1B),
+                    blurRadius: 18,
+                    offset: Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: CircleAvatar(
+                backgroundColor: _mist,
+                backgroundImage:
+                    photoUrl?.isNotEmpty == true
+                        ? NetworkImage(photoUrl!)
+                        : null,
+                child:
+                    photoUrl?.isNotEmpty == true
+                        ? null
+                        : Text(
+                          initialsSource.isEmpty
+                              ? 'F'
+                              : initialsSource[0].toUpperCase(),
+                          style: GoogleFonts.fraunces(
+                            color: _green,
+                            fontSize: 28,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+              ),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 48),
+      Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(
+            child: Text(
+              heading,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w800),
+            ),
+          ),
+          if (verified) ...[
+            const SizedBox(width: 6),
+            Tooltip(
+              message: localizeText(context, 'Verified seller'),
+              child: const Icon(
+                Icons.verified_rounded,
+                size: 19,
+                color: _green,
+              ),
+            ),
+          ],
+        ],
+      ),
+      const SizedBox(height: 8),
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: _line),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(badgeIcon, size: 15, color: _green),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                badgeLabel,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: _ink,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ],
   );
 }
 
@@ -4044,7 +4092,13 @@ class _ProfileSection extends StatelessWidget {
     decoration: BoxDecoration(
       color: Colors.white,
       borderRadius: BorderRadius.circular(18),
-      border: Border.all(color: _line),
+      boxShadow: const [
+        BoxShadow(
+          color: Color(0x0F0D2A1B),
+          blurRadius: 16,
+          offset: Offset(0, 6),
+        ),
+      ],
     ),
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
