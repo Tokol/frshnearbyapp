@@ -355,7 +355,8 @@ class _HotSalesDashboardSectionState extends State<HotSalesDashboardSection> {
   List<_Sale> _visibleSales = const [];
   final Map<String, Timer> _quantityTimers = {};
   final Map<String, double> _pendingQuantities = {};
-  final Set<String> _availabilityUpdates = {};
+  final Map<String, Timer> _availabilityTimers = {};
+  final Map<String, bool> _pendingAvailability = {};
   bool _loading = true;
   Object? _loadError;
 
@@ -370,8 +371,14 @@ class _HotSalesDashboardSectionState extends State<HotSalesDashboardSection> {
     for (final timer in _quantityTimers.values) {
       timer.cancel();
     }
+    for (final timer in _availabilityTimers.values) {
+      timer.cancel();
+    }
     for (final entry in _pendingQuantities.entries) {
       _api.quantity(entry.key, entry.value);
+    }
+    for (final entry in _pendingAvailability.entries) {
+      _api.availability(entry.key, entry.value);
     }
     super.dispose();
   }
@@ -484,12 +491,7 @@ class _HotSalesDashboardSectionState extends State<HotSalesDashboardSection> {
     });
   }
 
-  Future<void> _changeAvailability(_Sale sale, bool available) async {
-    if (_availabilityUpdates.contains(sale.id)) return;
-    final before = sale;
-    setState(() {
-      _availabilityUpdates.add(sale.id);
-    });
+  void _changeAvailability(_Sale sale, bool available) {
     _replaceVisible(
       sale.changed(
         status:
@@ -500,20 +502,33 @@ class _HotSalesDashboardSectionState extends State<HotSalesDashboardSection> {
                 : 'PAUSED',
       ),
     );
-    try {
-      await _api.availability(sale.id, available);
-    } catch (error) {
-      if (mounted) {
-        _replaceVisible(before);
-        _showError(context, error);
+
+    _availabilityTimers[sale.id]?.cancel();
+    _pendingAvailability[sale.id] = available;
+    _availabilityTimers[sale.id] = Timer(
+      const Duration(seconds: 1),
+      () async {
+        try {
+          await _api.availability(sale.id, available);
+          if (_pendingAvailability[sale.id] == available) {
+            _pendingAvailability.remove(sale.id);
+          }
+        } catch (error) {
+          if (_pendingAvailability[sale.id] == available) {
+            _pendingAvailability.remove(sale.id);
+          }
+          if (mounted) {
+            _showError(context, error);
+            _refreshSilently();
+          }
+        } finally {
+          if (_pendingAvailability[sale.id] == available ||
+              !_pendingAvailability.containsKey(sale.id)) {
+            _availabilityTimers.remove(sale.id);
+          }
+        }
       }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _availabilityUpdates.remove(sale.id);
-        });
-      }
-    }
+    );
   }
 
   void _replaceVisible(_Sale changed) {
@@ -594,9 +609,6 @@ class _HotSalesDashboardSectionState extends State<HotSalesDashboardSection> {
                         _visibleSales[index],
                         available,
                       ),
-                  availabilityUpdating: _availabilityUpdates.contains(
-                    _visibleSales[index].id,
-                  ),
                 ),
               ],
             ],
@@ -614,7 +626,6 @@ class _SaleCard extends StatelessWidget {
     required this.onEdit,
     required this.onDelete,
     required this.onAvailabilityChanged,
-    this.availabilityUpdating = false,
   });
   final _Sale sale;
   final String language;
@@ -622,7 +633,6 @@ class _SaleCard extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onDelete;
   final ValueChanged<bool> onAvailabilityChanged;
-  final bool availabilityUpdating;
 
   @override
   Widget build(BuildContext context) {
@@ -711,14 +721,6 @@ class _SaleCard extends StatelessWidget {
                 ),
               ),
               PopupMenuButton<String>(
-                enabled: !availabilityUpdating,
-                icon:
-                    availabilityUpdating
-                        ? const SizedBox.square(
-                          dimension: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                        : const Icon(Icons.more_vert),
                 onSelected: (value) {
                   if (value == 'edit') onEdit();
                   if (value == 'availability') {
