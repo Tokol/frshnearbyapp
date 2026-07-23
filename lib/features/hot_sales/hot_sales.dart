@@ -16,26 +16,6 @@ const _ink = Color(0xFF1B2A20);
 const _muted = Color(0xFF66735F);
 const _surface = Color(0xFFF1F6ED);
 
-const _categories = <String, List<String>>{
-  'vegetables': ['Vegetables', 'Vihannekset', 'Grönsaker'],
-  'fruits': ['Fruit', 'Hedelmät', 'Frukt'],
-  'berries': ['Berries', 'Marjat', 'Bär'],
-  'herbs': ['Herbs', 'Yrtit', 'Örter'],
-  'mushrooms': ['Mushrooms', 'Sienet', 'Svampar'],
-  'grains': ['Grains', 'Viljat', 'Spannmål'],
-  'eggs': ['Eggs', 'Kananmunat', 'Ägg'],
-  'dairy': ['Dairy', 'Maitotuotteet', 'Mejeriprodukter'],
-  'meat': ['Meat', 'Liha', 'Kött'],
-  'poultry': ['Poultry', 'Siipikarja', 'Fjäderfä'],
-  'fish': ['Fish and seafood', 'Kala ja äyriäiset', 'Fisk och skaldjur'],
-  'bakery': ['Bakery', 'Leipomotuotteet', 'Bageriprodukter'],
-  'honey': ['Honey', 'Hunaja', 'Honung'],
-  'preserves': ['Preserves', 'Säilykkeet', 'Konserver'],
-  'drinks': ['Drinks', 'Juomat', 'Drycker'],
-  'prepared-food': ['Prepared food', 'Valmisruoat', 'Färdigmat'],
-  'other': ['Other', 'Muu', 'Annat'],
-};
-
 class _Ring {
   const _Ring({
     required this.id,
@@ -421,7 +401,6 @@ class _CreateHotSaleScreenState extends State<_CreateHotSaleScreen> {
   final _quantity = TextEditingController();
   final _price = TextEditingController();
   final _search = TextEditingController();
-  String _category = 'vegetables';
   String _originalLanguage = 'auto';
   String _unit = 'KILOGRAM';
   bool _farm = true;
@@ -444,7 +423,6 @@ class _CreateHotSaleScreenState extends State<_CreateHotSaleScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final language = Localizations.localeOf(context).languageCode;
     return Scaffold(
       backgroundColor: _surface,
       appBar: AppBar(
@@ -477,29 +455,6 @@ class _CreateHotSaleScreenState extends State<_CreateHotSaleScreen> {
                       (value?.trim().length ?? 0) < 2
                           ? localizeText(context, 'Enter a product name.')
                           : null,
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              value: _category,
-              isExpanded: true,
-              decoration: InputDecoration(
-                labelText: localizeText(context, 'Category'),
-                prefixIcon: const Icon(Icons.category_outlined),
-              ),
-              items:
-                  _categories.entries.map((entry) {
-                    final index =
-                        language == 'fi'
-                            ? 1
-                            : language == 'sv'
-                            ? 2
-                            : 0;
-                    return DropdownMenuItem(
-                      value: entry.key,
-                      child: Text(entry.value[index]),
-                    );
-                  }).toList(),
-              onChanged: (value) => setState(() => _category = value!),
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
@@ -888,7 +843,6 @@ class _CreateHotSaleScreenState extends State<_CreateHotSaleScreen> {
               ? 'image/webp'
               : 'image/jpeg';
       await widget.api.create({
-        'categoryKey': _category,
         'originalLanguage': _originalLanguage,
         'originalTitle': _title.text.trim(),
         'description': _description.text.trim(),
