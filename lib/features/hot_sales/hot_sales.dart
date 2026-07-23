@@ -354,6 +354,7 @@ class _HotSalesDashboardSectionState extends State<HotSalesDashboardSection> {
   final _api = _HotSalesApi();
   List<_Sale> _visibleSales = const [];
   final Map<String, Timer> _quantityTimers = {};
+  final Set<String> _availabilityUpdates = {};
   bool _loading = true;
   Object? _loadError;
 
@@ -470,7 +471,11 @@ class _HotSalesDashboardSectionState extends State<HotSalesDashboardSection> {
   }
 
   Future<void> _changeAvailability(_Sale sale, bool available) async {
+    if (_availabilityUpdates.contains(sale.id)) return;
     final before = sale;
+    setState(() {
+      _availabilityUpdates.add(sale.id);
+    });
     _replaceVisible(
       sale.changed(
         status:
@@ -487,6 +492,12 @@ class _HotSalesDashboardSectionState extends State<HotSalesDashboardSection> {
       if (mounted) {
         _replaceVisible(before);
         _showError(context, error);
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _availabilityUpdates.remove(sale.id);
+        });
       }
     }
   }
@@ -569,6 +580,9 @@ class _HotSalesDashboardSectionState extends State<HotSalesDashboardSection> {
                         _visibleSales[index],
                         available,
                       ),
+                  availabilityUpdating: _availabilityUpdates.contains(
+                    _visibleSales[index].id,
+                  ),
                 ),
               ],
             ],
@@ -586,6 +600,7 @@ class _SaleCard extends StatelessWidget {
     required this.onEdit,
     required this.onDelete,
     required this.onAvailabilityChanged,
+    this.availabilityUpdating = false,
   });
   final _Sale sale;
   final String language;
@@ -593,6 +608,7 @@ class _SaleCard extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onDelete;
   final ValueChanged<bool> onAvailabilityChanged;
+  final bool availabilityUpdating;
 
   @override
   Widget build(BuildContext context) {
@@ -681,6 +697,14 @@ class _SaleCard extends StatelessWidget {
                 ),
               ),
               PopupMenuButton<String>(
+                enabled: !availabilityUpdating,
+                icon:
+                    availabilityUpdating
+                        ? const SizedBox.square(
+                          dimension: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                        : const Icon(Icons.more_vert),
                 onSelected: (value) {
                   if (value == 'edit') onEdit();
                   if (value == 'availability') {
