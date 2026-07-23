@@ -113,6 +113,12 @@ class _Sale {
           .map((ring) => (ring as Map<String, dynamic>)['id'] as String)
           .toList();
   Uint8List get image => base64Decode(json['imageBase64'] as String);
+
+  _Sale changed({double? quantity, String? status}) => _Sale({
+    ...json,
+    if (quantity != null) 'quantity': quantity,
+    if (status != null) 'status': status,
+  });
 }
 
 class _HotSalesApi {
@@ -276,13 +282,21 @@ class _HotSalesScreenState extends State<HotSalesScreen> {
                   language: language,
                   onChanged: (value) async {
                     await _api.quantity(sales[index].id, value);
-                    if (mounted) setState(() => _sales = _api.sales());
+                    if (mounted) {
+                      setState(() {
+                        _sales = _api.sales();
+                      });
+                    }
                   },
                   onEdit: () => _edit(sales[index]),
                   onDelete: () => _delete(sales[index]),
                   onAvailabilityChanged: (available) async {
                     await _api.availability(sales[index].id, available);
-                    if (mounted) setState(() => _sales = _api.sales());
+                    if (mounted) {
+                      setState(() {
+                        _sales = _api.sales();
+                      });
+                    }
                   },
                 ),
           );
@@ -295,7 +309,11 @@ class _HotSalesScreenState extends State<HotSalesScreen> {
     final saved = await Navigator.of(context).push<_Sale>(
       MaterialPageRoute(builder: (_) => _CreateHotSaleScreen(api: _api)),
     );
-    if (saved != null && mounted) setState(() => _sales = _api.sales());
+    if (saved != null && mounted) {
+      setState(() {
+        _sales = _api.sales();
+      });
+    }
   }
 
   Future<void> _edit(_Sale sale) async {
@@ -304,14 +322,22 @@ class _HotSalesScreenState extends State<HotSalesScreen> {
         builder: (_) => _CreateHotSaleScreen(api: _api, sale: sale),
       ),
     );
-    if (saved != null && mounted) setState(() => _sales = _api.sales());
+    if (saved != null && mounted) {
+      setState(() {
+        _sales = _api.sales();
+      });
+    }
   }
 
   Future<void> _delete(_Sale sale) async {
     final confirmed = await _confirmDelete(context, sale);
     if (!confirmed) return;
     await _api.archive(sale.id);
-    if (mounted) setState(() => _sales = _api.sales());
+    if (mounted) {
+      setState(() {
+        _sales = _api.sales();
+      });
+    }
   }
 }
 
@@ -328,7 +354,9 @@ class _HotSalesDashboardSectionState extends State<HotSalesDashboardSection> {
   late Future<List<_Sale>> _sales = _api.sales();
   List<_Sale> _visibleSales = const [];
 
-  void _reload() => setState(() => _sales = _api.sales());
+  void _reload() => setState(() {
+    _sales = _api.sales();
+  });
 
   void _showImmediately(_Sale changed) {
     final updated = [
@@ -336,7 +364,9 @@ class _HotSalesDashboardSectionState extends State<HotSalesDashboardSection> {
       ..._visibleSales.where((sale) => sale.id != changed.id),
     ];
     _visibleSales = updated;
-    setState(() => _sales = Future.value(updated));
+    setState(() {
+      _sales = Future.value(updated);
+    });
     _refreshSilently();
   }
 
@@ -345,7 +375,9 @@ class _HotSalesDashboardSectionState extends State<HotSalesDashboardSection> {
       final fresh = await _api.sales();
       if (!mounted) return;
       _visibleSales = fresh;
-      setState(() => _sales = Future.value(fresh));
+      setState(() {
+        _sales = Future.value(fresh);
+      });
     } catch (_) {
       // The confirmed mutation is already visible; retry on the next action.
     }
@@ -369,30 +401,75 @@ class _HotSalesDashboardSectionState extends State<HotSalesDashboardSection> {
 
   Future<void> _delete(_Sale sale) async {
     if (!await _confirmDelete(context, sale)) return;
+    final before = _visibleSales;
+    _setVisible(before.where((item) => item.id != sale.id).toList());
     try {
       await _api.archive(sale.id);
-      if (mounted) _reload();
+      if (mounted) _refreshSilently();
     } catch (error) {
-      if (mounted) _showError(context, error);
+      if (mounted) {
+        _setVisible(before);
+        _showError(context, error);
+      }
     }
   }
 
   Future<void> _changeQuantity(_Sale sale, double value) async {
+    final before = sale;
+    final status =
+        sale.status == 'PAUSED'
+            ? 'PAUSED'
+            : value == 0
+            ? 'SOLD_OUT'
+            : 'ACTIVE';
+    _replaceVisible(sale.changed(quantity: value, status: status));
     try {
       await _api.quantity(sale.id, value);
-      if (mounted) _reload();
+      if (mounted) _refreshSilently();
     } catch (error) {
-      if (mounted) _showError(context, error);
+      if (mounted) {
+        _replaceVisible(before);
+        _showError(context, error);
+      }
     }
   }
 
   Future<void> _changeAvailability(_Sale sale, bool available) async {
+    final before = sale;
+    _replaceVisible(
+      sale.changed(
+        status:
+            available
+                ? sale.quantity == 0
+                    ? 'SOLD_OUT'
+                    : 'ACTIVE'
+                : 'PAUSED',
+      ),
+    );
     try {
       await _api.availability(sale.id, available);
-      if (mounted) _reload();
+      if (mounted) _refreshSilently();
     } catch (error) {
-      if (mounted) _showError(context, error);
+      if (mounted) {
+        _replaceVisible(before);
+        _showError(context, error);
+      }
     }
+  }
+
+  void _replaceVisible(_Sale changed) {
+    _setVisible(
+      _visibleSales
+          .map((sale) => sale.id == changed.id ? changed : sale)
+          .toList(),
+    );
+  }
+
+  void _setVisible(List<_Sale> sales) {
+    _visibleSales = sales;
+    setState(() {
+      _sales = Future.value(sales);
+    });
   }
 
   @override
