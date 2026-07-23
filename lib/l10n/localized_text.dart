@@ -519,6 +519,13 @@ const _fi = <String, String>{
   'Original text': 'Alkuperäinen teksti',
   'AI translated from': 'Tekoälyn kääntämä kielestä',
   'See original': 'Näytä alkuperäinen',
+  'Other / custom unit': 'Muu / oma yksikkö',
+  'Custom selling unit': 'Oma myyntiyksikkö',
+  'For example: bag, tray, jar, or 5 kg box':
+      'Esimerkiksi: pussi, tarjotin, purkki tai 5 kg laatikko',
+  'Enter your selling unit.': 'Anna myyntiyksikkö.',
+  'Customer price per': 'Asiakashinta per',
+  'custom unit': 'oma yksikkö',
 };
 
 const _sv = <String, String>{
@@ -895,4 +902,11 @@ const _sv = <String, String>{
   'Original text': 'Originaltext',
   'AI translated from': 'AI-översatt från',
   'See original': 'Visa original',
+  'Other / custom unit': 'Annan / egen enhet',
+  'Custom selling unit': 'Egen försäljningsenhet',
+  'For example: bag, tray, jar, or 5 kg box':
+      'Till exempel: påse, bricka, burk eller 5 kg låda',
+  'Enter your selling unit.': 'Ange din försäljningsenhet.',
+  'Customer price per': 'Kundpris per',
+  'custom unit': 'egen enhet',
 };

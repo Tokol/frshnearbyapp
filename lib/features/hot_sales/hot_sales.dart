@@ -100,6 +100,7 @@ class _Sale {
   double get quantity => (json['quantity'] as num).toDouble();
   int get priceCents => json['priceCents'] as int;
   String get unit => json['unit'] as String;
+  String? get customUnit => json['customUnit'] as String?;
   Uint8List get image => base64Decode(json['imageBase64'] as String);
 }
 
@@ -151,7 +152,7 @@ class _HotSalesApi {
 
   Future<List<_Sale>> sales() async {
     final data = await send(
-      'query { myHotSales { id categoryKey originalLanguage detectedLanguage originalTitle description productionDetail unit priceCents quantity producedAt availableAtFarm status imageMimeType imageBase64 translations { locale title description productionDetail status provider model } rekoRings { id name municipality regionName } } }',
+      'query { myHotSales { id categoryKey originalLanguage detectedLanguage originalTitle description productionDetail unit customUnit priceCents quantity producedAt availableAtFarm status imageMimeType imageBase64 translations { locale title description productionDetail status provider model } rekoRings { id name municipality regionName } } }',
     );
     return (data['myHotSales'] as List<dynamic>)
         .map((v) => _Sale(v as Map<String, dynamic>))
@@ -267,7 +268,10 @@ class _SaleCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final unit = _unitLabel(context, sale.unit);
+    final unit =
+        sale.unit == 'OTHER' && sale.customUnit?.trim().isNotEmpty == true
+            ? sale.customUnit!.trim()
+            : _unitLabel(context, sale.unit);
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -400,6 +404,7 @@ class _CreateHotSaleScreenState extends State<_CreateHotSaleScreen> {
   final _production = TextEditingController();
   final _quantity = TextEditingController();
   final _price = TextEditingController();
+  final _customUnit = TextEditingController();
   final _search = TextEditingController();
   String _unit = 'KILOGRAM';
   bool _farm = true;
@@ -416,6 +421,7 @@ class _CreateHotSaleScreenState extends State<_CreateHotSaleScreen> {
     _production.dispose();
     _quantity.dispose();
     _price.dispose();
+    _customUnit.dispose();
     _search.dispose();
     super.dispose();
   }
@@ -476,6 +482,7 @@ class _CreateHotSaleScreenState extends State<_CreateHotSaleScreen> {
                         'BUNCH',
                         'BOX',
                         'DOZEN',
+                        'OTHER',
                       ]
                       .map(
                         (u) => DropdownMenuItem(
@@ -486,6 +493,27 @@ class _CreateHotSaleScreenState extends State<_CreateHotSaleScreen> {
                       .toList(),
               onChanged: (value) => setState(() => _unit = value!),
             ),
+            if (_unit == 'OTHER') ...[
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _customUnit,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: InputDecoration(
+                  labelText: localizeText(context, 'Custom selling unit'),
+                  hintText: localizeText(
+                    context,
+                    'For example: bag, tray, jar, or 5 kg box',
+                  ),
+                  prefixIcon: const Icon(Icons.edit_outlined),
+                ),
+                onChanged: (_) => setState(() {}),
+                validator:
+                    (value) =>
+                        (value?.trim().isEmpty ?? true)
+                            ? localizeText(context, 'Enter your selling unit.')
+                            : null,
+              ),
+            ],
             const SizedBox(height: 12),
             TextFormField(
               controller: _quantity,
@@ -505,7 +533,9 @@ class _CreateHotSaleScreenState extends State<_CreateHotSaleScreen> {
                 decimal: true,
               ),
               decoration: InputDecoration(
-                labelText: localizeText(context, 'Customer price'),
+                labelText:
+                    '${localizeText(context, 'Customer price per')} '
+                    '${_unit == 'OTHER' ? (_customUnit.text.trim().isEmpty ? localizeText(context, 'custom unit') : _customUnit.text.trim()) : _unitLabel(context, _unit)}',
                 prefixText: '€ ',
               ),
               validator: _positive,
@@ -820,6 +850,7 @@ class _CreateHotSaleScreenState extends State<_CreateHotSaleScreen> {
         if (_production.text.trim().isNotEmpty)
           'productionDetail': _production.text.trim(),
         'unit': _unit,
+        if (_unit == 'OTHER') 'customUnit': _customUnit.text.trim(),
         'priceCents':
             ((double.parse(_price.text.replaceAll(',', '.'))) * 100).round(),
         'quantity': double.parse(_quantity.text.replaceAll(',', '.')),
@@ -850,6 +881,7 @@ String _unitLabel(BuildContext context, String unit) =>
       'BUNCH' => 'bunch',
       'BOX' => 'box',
       'DOZEN' => 'dozen',
+      'OTHER' => 'Other / custom unit',
       _ => unit,
     });
 
