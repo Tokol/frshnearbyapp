@@ -15,6 +15,8 @@ const _green = Color(0xFF2F6B45);
 const _ink = Color(0xFF1B2A20);
 const _muted = Color(0xFF66735F);
 const _surface = Color(0xFFF1F6ED);
+const _saleFields =
+    'id categoryKey originalLanguage detectedLanguage originalTitle description productionDetail unit customUnit priceCents quantity producedAt availableAtFarm status imageName imageMimeType imageBase64 translations { locale title description productionDetail status provider model } rekoRings { id name municipality regionName }';
 
 class _Ring {
   const _Ring({
@@ -160,15 +162,15 @@ class _HotSalesApi {
   }
 
   Future<List<_Sale>> sales() async {
-    const fields =
-        'id categoryKey originalLanguage detectedLanguage originalTitle description productionDetail unit priceCents quantity producedAt availableAtFarm status imageName imageMimeType imageBase64 translations { locale title description productionDetail status provider model } rekoRings { id name municipality regionName }';
     Map<String, dynamic> data;
     try {
-      data = await send('query { myHotSales { $fields customUnit } }');
+      data = await send('query { myHotSales { $_saleFields } }');
     } on StateError catch (error) {
       if (!error.message.toString().contains('customUnit')) rethrow;
       // Keep the listing usable while a newly deployed API field is rolling out.
-      data = await send('query { myHotSales { $fields } }');
+      data = await send(
+        'query { myHotSales { ${_saleFields.replaceFirst('customUnit ', '')} } }',
+      );
     }
     return (data['myHotSales'] as List<dynamic>)
         .map((v) => _Sale(v as Map<String, dynamic>))
@@ -184,14 +186,21 @@ class _HotSalesApi {
         .toList();
   }
 
-  Future<void> create(Map<String, dynamic> input) => send(
-    'mutation(\$input: CreateHotSaleInput!) { createHotSale(input: \$input) { id } }',
-    {'input': input},
-  );
-  Future<void> update(Map<String, dynamic> input) => send(
-    'mutation(\$input: UpdateHotSaleInput!) { updateHotSale(input: \$input) { id } }',
-    {'input': input},
-  );
+  Future<_Sale> create(Map<String, dynamic> input) async {
+    final data = await send(
+      'mutation(\$input: CreateHotSaleInput!) { createHotSale(input: \$input) { $_saleFields } }',
+      {'input': input},
+    );
+    return _Sale(data['createHotSale'] as Map<String, dynamic>);
+  }
+
+  Future<_Sale> update(Map<String, dynamic> input) async {
+    final data = await send(
+      'mutation(\$input: UpdateHotSaleInput!) { updateHotSale(input: \$input) { $_saleFields } }',
+      {'input': input},
+    );
+    return _Sale(data['updateHotSale'] as Map<String, dynamic>);
+  }
   Future<void> quantity(String id, double value) => send(
     'mutation(\$input: HotSaleQuantityInput!) { setHotSaleQuantity(input: \$input) { id } }',
     {
@@ -283,19 +292,19 @@ class _HotSalesScreenState extends State<HotSalesScreen> {
   }
 
   Future<void> _add() async {
-    final saved = await Navigator.of(context).push<bool>(
+    final saved = await Navigator.of(context).push<_Sale>(
       MaterialPageRoute(builder: (_) => _CreateHotSaleScreen(api: _api)),
     );
-    if (saved == true && mounted) setState(() => _sales = _api.sales());
+    if (saved != null && mounted) setState(() => _sales = _api.sales());
   }
 
   Future<void> _edit(_Sale sale) async {
-    final saved = await Navigator.of(context).push<bool>(
+    final saved = await Navigator.of(context).push<_Sale>(
       MaterialPageRoute(
         builder: (_) => _CreateHotSaleScreen(api: _api, sale: sale),
       ),
     );
-    if (saved == true && mounted) setState(() => _sales = _api.sales());
+    if (saved != null && mounted) setState(() => _sales = _api.sales());
   }
 
   Future<void> _delete(_Sale sale) async {
@@ -317,23 +326,45 @@ class HotSalesDashboardSection extends StatefulWidget {
 class _HotSalesDashboardSectionState extends State<HotSalesDashboardSection> {
   final _api = _HotSalesApi();
   late Future<List<_Sale>> _sales = _api.sales();
+  List<_Sale> _visibleSales = const [];
 
   void _reload() => setState(() => _sales = _api.sales());
 
+  void _showImmediately(_Sale changed) {
+    final updated = [
+      changed,
+      ..._visibleSales.where((sale) => sale.id != changed.id),
+    ];
+    _visibleSales = updated;
+    setState(() => _sales = Future.value(updated));
+    _refreshSilently();
+  }
+
+  Future<void> _refreshSilently() async {
+    try {
+      final fresh = await _api.sales();
+      if (!mounted) return;
+      _visibleSales = fresh;
+      setState(() => _sales = Future.value(fresh));
+    } catch (_) {
+      // The confirmed mutation is already visible; retry on the next action.
+    }
+  }
+
   Future<void> _add() async {
-    final saved = await Navigator.of(context).push<bool>(
+    final saved = await Navigator.of(context).push<_Sale>(
       MaterialPageRoute(builder: (_) => _CreateHotSaleScreen(api: _api)),
     );
-    if (saved == true && mounted) _reload();
+    if (saved != null && mounted) _showImmediately(saved);
   }
 
   Future<void> _edit(_Sale sale) async {
-    final saved = await Navigator.of(context).push<bool>(
+    final saved = await Navigator.of(context).push<_Sale>(
       MaterialPageRoute(
         builder: (_) => _CreateHotSaleScreen(api: _api, sale: sale),
       ),
     );
-    if (saved == true && mounted) _reload();
+    if (saved != null && mounted) _showImmediately(saved);
   }
 
   Future<void> _delete(_Sale sale) async {
@@ -408,6 +439,7 @@ class _HotSalesDashboardSectionState extends State<HotSalesDashboardSection> {
               );
             }
             final sales = snapshot.data ?? const [];
+            _visibleSales = sales;
             if (sales.isEmpty) {
               return _InlineMessage(
                 icon: Icons.local_offer_outlined,
@@ -1140,12 +1172,11 @@ class _CreateHotSaleScreenState extends State<_CreateHotSaleScreen> {
         'imageMimeType': mime,
         'imageBase64': base64Encode(_photoBytes!),
       };
-      if (widget.sale == null) {
-        await widget.api.create(input);
-      } else {
-        await widget.api.update(input);
-      }
-      if (mounted) Navigator.of(context).pop(true);
+      final saved =
+          widget.sale == null
+              ? await widget.api.create(input)
+              : await widget.api.update(input);
+      if (mounted) Navigator.of(context).pop(saved);
     } catch (error) {
       if (mounted)
         ScaffoldMessenger.of(
